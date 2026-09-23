@@ -3,7 +3,13 @@ package openrouter
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/OpenRouterTeam/go-sdk/models/components"
 
@@ -98,4 +104,56 @@ func srvChunk(t *testing.T, a *accumulator, data string) {
 		t.Fatal(err)
 	}
 	a.add(c, func(llm.Event) {})
+}
+
+// A cancel while the stream is open reads as a cancel. The SDK's reader returns no error when
+// the connection closes, which read as "stream ended without a finish reason".
+func TestACancelMidStreamIsReported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"id\":\"g\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"},\"finish_reason\":null}]}\n\n")
+		w.(http.Flusher).Flush()
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+	ctx, cancel := context.WithCancel(context.Background())
+	time.AfterFunc(200*time.Millisecond, cancel)
+	_, err := New("openrouter", "k", srv.URL).Stream(ctx, request("m", llm.Message{Role: llm.User, Text: "hi"}), func(llm.Event) {})
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("got %v", err)
+	}
+	if streamClient.Timeout != 0 {
+		t.Fatal("the streaming client has an overall timeout, which cuts long streams")
+	}
+}
+
+func TestRetriesAreReported(t *testing.T) {
+	srv := llmtest.New(t, llmtest.Status(502, `{"error":{"message":"upstream"}}`), answer)
+	var reasons []string
+	ctx := llm.WithRetries(context.Background(), func(_ int, r string) { reasons = append(reasons, r) })
+	resp, err := New("openrouter", "k", srv.URL).Stream(ctx, request("m", llm.Message{Role: llm.User, Text: "hi"}), func(llm.Event) {})
+	if err != nil || resp.Message.Text != "done" {
+		t.Fatalf("%v %+v", err, resp)
+	}
+	if len(reasons) != 1 || reasons[0] != "502 Bad Gateway" {
+		t.Fatalf("reasons %v", reasons)
+	}
+}
+
+// A connection dropped mid-stream reports the read error, which the SDK's reader discards.
+func TestADroppedConnectionIsReported(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"id\":\"g\",\"object\":\"chat.completion.chunk\",\"created\":1,\"model\":\"m\",\"choices\":[{\"index\":0,\"delta\":{\"content\":\"x\"},\"finish_reason\":null}]}\n\n")
+		w.(http.Flusher).Flush()
+		// Close without the chunked encoding's terminator, as a dropped connection does.
+		conn, _, _ := w.(http.Hijacker).Hijack()
+		conn.Close()
+	}))
+	defer srv.Close()
+	ctx := llm.WithRetries(context.Background(), func(int, string) {})
+	_, err := New("openrouter", "k", srv.URL).Stream(ctx, request("m", llm.Message{Role: llm.User, Text: "hi"}), func(llm.Event) {})
+	if !errors.Is(err, llm.ErrIncomplete) || !strings.Contains(err.Error(), "EOF") {
+		t.Fatalf("got %v", err)
+	}
 }

@@ -31,6 +31,7 @@ func New(name, key, baseURL string, opts ...option.RequestOption) *Provider {
 	if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}
+	opts = append([]option.RequestOption{option.WithHTTPClient(llm.HTTPClient)}, opts...)
 	opts = append(opts, option.WithMaxRetries(4))
 	return &Provider{name: name, client: sdk.NewClient(opts...)}
 }
@@ -70,7 +71,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 		return llm.Response{}, wrap(err)
 	}
 	if final == nil {
-		return llm.Response{}, errors.New("stream ended without a completed response")
+		return llm.Response{}, llm.Incomplete(ctx)
 	}
 	return p.response(req.Model, final)
 }
@@ -171,9 +172,27 @@ func (p *Provider) Models(ctx context.Context) ([]llm.Model, error) {
 	var out []llm.Model
 	iter := p.client.Models.ListAutoPaging(ctx)
 	for iter.Next() {
-		out = append(out, llm.Model{ID: iter.Current().ID})
+		if id := iter.Current().ID; chatModel(id) {
+			out = append(out, llm.Model{ID: id})
+		}
 	}
 	return out, iter.Err()
+}
+
+// nonChat marks model families that cannot answer a Responses request with tools. OpenAI's
+// list carries no capabilities, so this goes by name; a new family may need adding.
+var nonChat = []string{
+	"babbage", "davinci", "dall-e", "gpt-image", "embedding", "moderation",
+	"tts", "whisper", "transcribe", "realtime", "sora",
+}
+
+func chatModel(id string) bool {
+	for _, s := range nonChat {
+		if strings.Contains(id, s) {
+			return false
+		}
+	}
+	return true
 }
 
 func wrap(err error) error {

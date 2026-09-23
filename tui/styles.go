@@ -77,8 +77,12 @@ func NewStyles() Styles {
 	}
 }
 
-// ToolLine formats a finished call as one line: its label, then the outcome. width 0 means
-// no limit. Errors keep their full text, since a hint at the end of one is often the point.
+// toolPrefix marks a tool line, as in myra, so it stands apart from the answer when the
+// transcript is read without colour.
+const toolPrefix = "[tool] "
+
+// ToolLine formats a finished call as one line: "[tool] ", its label, then the outcome. width
+// 0 means no limit. When the line is too wide the label is cut first, so the outcome stays.
 func ToolLine(st Styles, r agent.ToolResult, width int) string {
 	name := r.Call.Name
 	style, ok := st.Tool[name]
@@ -100,17 +104,31 @@ func ToolLine(st Styles, r agent.ToolResult, width int) string {
 		outcome = st.Dim.Render(r.Result.Summary)
 	}
 	rest = oneLine(ansi.Strip(rest))
-	line := "  " + style.Render(head) + " " + rest + st.Dim.Render(" -> ") + outcome
+	build := func(rest string) string {
+		line := st.Dim.Render(toolPrefix) + style.Render(head)
+		if rest != "" {
+			line += " " + rest
+		}
+		return line + st.Dim.Render(" -> ") + outcome
+	}
+	line := build(rest)
 	if width > 0 && ansi.StringWidth(line) > width {
-		// Cut the label, not the outcome.
-		room := width - ansi.StringWidth(outcome) - ansi.StringWidth(head) - 7
-		if room > 8 {
-			rest = ansi.Truncate(rest, room, "...")
-			line = "  " + style.Render(head) + " " + rest + st.Dim.Render(" -> ") + outcome
+		fixed := len(toolPrefix) + ansi.StringWidth(head) + len(" ") + len(" -> ") + ansi.StringWidth(outcome)
+		if room := width - fixed; room > 8 && rest != "" {
+			line = build(ansi.Truncate(rest, room, "..."))
 		}
 		if r.Err == nil {
 			line = ansi.Truncate(line, width, "...")
 		}
+	}
+	return line
+}
+
+// RetryLine describes a retry, such as "[retry] 2 after 503 Service Unavailable".
+func RetryLine(r agent.Retry) string {
+	line := fmt.Sprintf("[retry] %d", r.Attempt)
+	if r.Reason != "" {
+		line += " after " + oneLine(r.Reason)
 	}
 	return line
 }

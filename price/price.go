@@ -47,10 +47,12 @@ func (e Entry) Cost(u llm.Usage) (float64, bool) {
 	if e.Rates == nil {
 		return 0, false
 	}
-	r := *e.Rates
+	// The matching tier with the highest threshold, whatever order the tiers are in: a
+	// listing, or a catalog cached before, need not sort them.
+	r, best := *e.Rates, int64(-1)
 	for _, t := range e.Tiers {
-		if u.Input > t.MinPrompt {
-			r = t.Rates
+		if u.Input > t.MinPrompt && t.MinPrompt > best {
+			r, best = t.Rates, t.MinPrompt
 		}
 	}
 	fresh := max(u.Input-u.CacheRead-u.CacheWrite, 0)

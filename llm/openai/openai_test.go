@@ -125,3 +125,29 @@ func TestAStreamWithoutCompletionIsAnError(t *testing.T) {
 		t.Fatal("a cut stream was taken as complete")
 	}
 }
+
+func TestChatModels(t *testing.T) {
+	for id, want := range map[string]bool{
+		"gpt-5.5": true, "gpt-6-luna": true, "o4-mini": true, "gpt-4o-mini": true,
+		"babbage-002": false, "davinci-002": false, "text-embedding-3-large": false, "tts-1-hd": false,
+		"whisper-1": false, "gpt-4o-transcribe": false, "gpt-4o-mini-tts": false, "dall-e-3": false,
+		"gpt-image-1": false, "omni-moderation-latest": false, "gpt-realtime": false, "sora-2-pro": false,
+	} {
+		if chatModel(id) != want {
+			t.Errorf("chatModel(%q) = %v", id, !want)
+		}
+	}
+}
+
+func TestRetriesAreReported(t *testing.T) {
+	srv := llmtest.New(t, llmtest.Status(503, `{"error":{"message":"busy"}}`), answer)
+	var reasons []string
+	ctx := llm.WithRetries(context.Background(), func(_ int, r string) { reasons = append(reasons, r) })
+	resp, err := New("openai", "k", srv.URL).Stream(ctx, request("gpt-x", llm.Message{Role: llm.User, Text: "hi"}), func(llm.Event) {})
+	if err != nil || resp.Message.Text != "done" {
+		t.Fatalf("%v %+v", err, resp)
+	}
+	if len(reasons) != 1 || reasons[0] != "503 Service Unavailable" {
+		t.Fatalf("reasons %v", reasons)
+	}
+}

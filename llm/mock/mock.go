@@ -22,6 +22,8 @@ type Step struct {
 	Usage     llm.Usage      `json:"usage"`
 	Stop      llm.StopReason `json:"stop,omitempty"`
 	Error     string         `json:"error,omitempty"`
+	// Incomplete ends the response stream early, as a dropped connection does.
+	Incomplete bool `json:"incomplete,omitempty"`
 }
 
 type Call struct {
@@ -69,6 +71,10 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 	}
 	if s.Error != "" {
 		return llm.Response{}, errors.New(s.Error)
+	}
+	if s.Incomplete {
+		emit(llm.Event{Kind: llm.TextDelta, Text: s.Text})
+		return llm.Response{}, llm.ErrIncomplete
 	}
 	if s.Reasoning != "" {
 		emit(llm.Event{Kind: llm.ReasoningDelta, Text: s.Reasoning})

@@ -28,6 +28,7 @@ func New(name, key, baseURL string, opts ...option.RequestOption) *Provider {
 	if baseURL != "" {
 		opts = append(opts, option.WithBaseURL(baseURL))
 	}
+	opts = append([]option.RequestOption{option.WithHTTPClient(llm.HTTPClient)}, opts...)
 	opts = append(opts, option.WithMaxRetries(4))
 	return &Provider{name: name, client: sdk.NewClient(opts...)}
 }
@@ -63,7 +64,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 	}
 	if msg.StopReason == "" {
 		// A proxy or a dropped connection can end the stream after complete-looking output.
-		return llm.Response{}, errors.New("stream ended without a stop reason")
+		return llm.Response{}, llm.Incomplete(ctx)
 	}
 	return p.response(req.Model, msg), nil
 }

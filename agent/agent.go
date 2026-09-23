@@ -13,6 +13,9 @@ import (
 	"github.com/shakfu/gila/tool"
 )
 
+// maxCut bounds the resends of one round-trip whose stream ended early.
+const maxCut = 2
+
 // Declined is the result recorded for a call Approve refused.
 const Declined = "the user declined this call"
 
@@ -89,6 +92,12 @@ type (
 		// Err is set when the tool failed; its text is what the model received.
 		Err error
 	}
+	// Retry reports that the provider's SDK is sending a request again: Attempt counts from 1,
+	// and Reason is why the previous attempt failed, such as "429 Too Many Requests".
+	Retry struct {
+		Attempt int
+		Reason  string
+	}
 	// Response closes one provider round-trip.
 	Response struct {
 		Text  string
@@ -103,6 +112,7 @@ func (ToolStart) event()  {}
 func (ToolCall) event()   {}
 func (ToolResult) event() {}
 func (Response) event()   {}
+func (Retry) event()      {}
 
 // Result summarises one prompt.
 type Result struct {
@@ -126,6 +136,7 @@ func (a *Agent) Run(ctx context.Context, prompt string, emit func(Event)) (Resul
 	start := len(a.History)
 	a.History = append(a.History, llm.Message{Role: llm.User, Text: prompt})
 	var res Result
+	cut := 0 // consecutive round-trips whose stream ended early
 	for res.Turns < a.MaxTurns {
 		if a.Context > 0 && a.Used >= a.Context*95/100 {
 			// Completed turns stay: their tools already changed files the model must remember.
@@ -134,7 +145,10 @@ func (a *Agent) Run(ctx context.Context, prompt string, emit func(Event)) (Resul
 			}
 			return res, ErrContextFull
 		}
-		resp, err := a.Provider.Stream(ctx, a.request(), func(e llm.Event) {
+		rctx := llm.WithRetries(ctx, func(attempt int, reason string) {
+			emit(Retry{Attempt: attempt, Reason: reason})
+		})
+		resp, err := a.Provider.Stream(rctx, a.request(), func(e llm.Event) {
 			switch e.Kind {
 			case llm.TextDelta:
 				emit(Text{e.Text})
@@ -144,12 +158,20 @@ func (a *Agent) Run(ctx context.Context, prompt string, emit func(Event)) (Resul
 				emit(ToolStart{e.Text})
 			}
 		})
+		// A stream that ended early left no trace in the history, so the same request can go
+		// again. The SDKs retry failed requests but not a response cut off mid-stream.
+		if errors.Is(err, llm.ErrIncomplete) && ctx.Err() == nil && cut < maxCut {
+			cut++
+			emit(Retry{Attempt: cut, Reason: err.Error()})
+			continue
+		}
 		if err != nil {
 			if len(a.History) == start+1 {
 				a.History = a.History[:start]
 			}
 			return res, err
 		}
+		cut = 0
 		res.Turns++
 		a.price(&resp.Usage)
 		a.Usage.Add(resp.Usage)

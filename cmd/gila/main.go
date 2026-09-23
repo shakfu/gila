@@ -17,6 +17,7 @@ import (
 	"golang.org/x/term"
 
 	"github.com/shakfu/gila/app"
+	"github.com/shakfu/gila/llm"
 	"github.com/shakfu/gila/permission"
 	"github.com/shakfu/gila/provider"
 	"github.com/shakfu/gila/tui"
@@ -135,6 +136,16 @@ func run(f flags) int {
 		}
 		fmt.Fprintln(os.Stderr, "gila:", err)
 		return 2
+	}
+
+	if path := os.Getenv("GILA_LOG"); path != "" {
+		logFile, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "gila:", err)
+			return 2
+		}
+		defer logFile.Close()
+		llm.SetLog(logFile)
 	}
 
 	a, err := app.New(f.Options)

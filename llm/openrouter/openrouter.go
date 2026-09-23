@@ -9,7 +9,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net"
+	"net/http"
 	"strings"
+	"time"
 
 	sdk "github.com/OpenRouterTeam/go-sdk"
 	"github.com/OpenRouterTeam/go-sdk/models/components"
@@ -30,6 +33,7 @@ func New(name, key, baseURL string) *Provider {
 	opts := []sdk.SDKOption{
 		sdk.WithSecurity(key),
 		sdk.WithXTitle("gila"),
+		sdk.WithClient(streamClient),
 		// The SDK's default backs off on 5xx for up to an hour, which would hang a -p run.
 		sdk.WithRetryConfig(retry.Config{
 			Strategy: "backoff",
@@ -43,6 +47,20 @@ func New(name, key, baseURL string) *Provider {
 		opts = append(opts, sdk.WithServerURL(baseURL))
 	}
 	return &Provider{name: name, client: sdk.New(opts...)}
+}
+
+// streamClient bounds connecting and waiting for headers but not the response. The SDK's
+// default client times out after 60 s in total, which cut every stream that ran longer, and
+// its event reader drops the read error, so the cut looked like a stream that just ended.
+var streamClient = &http.Client{
+	Transport: llm.Transport(&http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		DialContext:           (&net.Dialer{Timeout: 10 * time.Second, KeepAlive: 30 * time.Second}).DialContext,
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 5 * time.Minute,
+		IdleConnTimeout:       90 * time.Second,
+		ForceAttemptHTTP2:     true,
+	}),
 }
 
 func (p *Provider) Name() string { return p.name }
@@ -70,8 +88,12 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 	if err := events.Err(); err != nil {
 		return llm.Response{}, err
 	}
+	// The SDK's reader returns no error when the connection drops, so a cancel shows here.
+	if err := ctx.Err(); err != nil {
+		return llm.Response{}, err
+	}
 	if acc.finish == "" {
-		return llm.Response{}, errors.New("stream ended without a finish reason")
+		return llm.Response{}, llm.Incomplete(ctx)
 	}
 	return acc.response(p.name, req.Model), nil
 }

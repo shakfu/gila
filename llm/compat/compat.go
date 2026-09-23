@@ -24,6 +24,7 @@ func New(name, key, baseURL string, opts ...option.RequestOption) *Provider {
 	if key == "" {
 		key = "none"
 	}
+	opts = append([]option.RequestOption{option.WithHTTPClient(llm.HTTPClient)}, opts...)
 	opts = append(opts, option.WithAPIKey(key), option.WithBaseURL(baseURL), option.WithMaxRetries(2))
 	return &Provider{name: name, client: sdk.NewClient(opts...)}
 }
@@ -67,7 +68,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 		return llm.Response{}, err
 	}
 	if len(acc.Choices) == 0 || acc.Choices[0].FinishReason == "" {
-		return llm.Response{}, errors.New("stream ended without a finish reason")
+		return llm.Response{}, llm.Incomplete(ctx)
 	}
 
 	choice := acc.Choices[0]

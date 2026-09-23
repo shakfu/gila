@@ -59,7 +59,10 @@ type (
 		res agent.Result
 		err error
 	}
-	prepMsg struct{ warns []error }
+	prepMsg struct {
+		warns []error
+		err   error
+	}
 	// approvalMsg asks the user whether a call may run; the agent waits on reply.
 	approvalMsg struct {
 		call  llm.ToolCall
@@ -154,7 +157,8 @@ func newModel(ctx context.Context, a *app.App, opts Options) *model {
 func (m *model) Init() tea.Cmd {
 	a := m.app
 	return tea.Batch(m.spin.Tick, func() tea.Msg {
-		return prepMsg{warns: a.Prepare(m.ctx)}
+		warns, err := a.Prepare(m.ctx)
+		return prepMsg{warns: warns, err: err}
 	})
 }
 
@@ -188,6 +192,10 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.busy = ""
 		m.sync()
 		m.banner(msg.warns)
+		if msg.err != nil {
+			m.out(m.st.Error.Render("error: " + msg.err.Error()))
+			m.out(m.st.Dim.Render("pick a model with /model, or a provider with /provider"))
+		}
 		return m, tea.Sequence(m.flush(), m.next())
 
 	case switchedMsg:
@@ -426,6 +434,10 @@ func (m *model) event(ev agent.Event) {
 			}
 			m.thinking = m.thinking[i+1:]
 		}
+	case agent.Retry:
+		m.endText()
+		m.phase = fmt.Sprintf("retry %d: %s", e.Attempt, oneLine(e.Reason))
+		m.out(m.st.Warn.Render(RetryLine(e)))
 	case agent.ToolStart:
 		m.endText()
 		m.phase = "preparing " + e.Name

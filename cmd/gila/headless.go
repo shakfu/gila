@@ -39,7 +39,15 @@ func headless(parent context.Context, a *app.App, prompt string, asJSON, color b
 		a.SetPermissions("", ttyAsk)
 	}
 
-	for _, w := range a.Prepare(ctx) {
+	warns, err := a.Prepare(ctx)
+	if err != nil {
+		if asJSON {
+			return writeFailure(os.Stdout, err)
+		}
+		fmt.Fprintln(os.Stderr, "gila:", err)
+		return 1
+	}
+	for _, w := range warns {
 		if !asJSON {
 			fmt.Fprintln(os.Stderr, "gila: warning:", w)
 		}
@@ -100,6 +108,8 @@ func textEvents(out, diag io.Writer, st tui.Styles) func(agent.Event) {
 			}
 		case agent.ToolResult:
 			fmt.Fprintln(diag, tui.ToolLine(st, e, 0))
+		case agent.Retry:
+			fmt.Fprintln(diag, st.Warn.Render(tui.RetryLine(e)))
 		}
 	}
 }
@@ -117,7 +127,7 @@ func (j *jsonOut) write(v any) {
 // so its deltas are not printed.
 func (j *jsonOut) event(e agent.Event) {
 	switch e.(type) {
-	case agent.ToolCall, agent.ToolResult, agent.Response:
+	case agent.ToolCall, agent.ToolResult, agent.Retry, agent.Response:
 		j.write(agent.Record(e))
 	}
 }

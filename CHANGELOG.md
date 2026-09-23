@@ -31,13 +31,29 @@
 
 - `-P compat` talks to any OpenAI-compatible Chat Completions server, such as LM Studio or vLLM, at `--base-url` or `COMPAT_BASE_URL`, with an optional `COMPAT_API_KEY`. A named provider was chosen over accepting `--base-url` alone, which would have to guess the wire format.
 
+- Retries show. The provider SDKs retry a failed request on their own and say nothing: Anthropic and OpenAI up to 4 times, the local providers twice, OpenRouter for up to a minute. The REPL's status bar and a `[retry]` line, `-p`'s stderr and a `retry` record in `--json` now report each retry and why the previous attempt failed. One HTTP transport counts the attempts each request makes, which covers all four adapters without hooking each SDK.
+
+- `GILA_LOG=FILE` appends each request's endpoint and status and the raw response stream, for diagnosing a provider. Request bodies and headers, keys among them, are never written.
+
 - For embedding apps: `agent.Config.Approve` is asked before each call, and `permission.Approver` builds one from a mode. `agent.Record` maps events to JSON-ready records. `app.Options.Keys` takes vendor keys ahead of the environment, which a GUI app does not inherit. `StateDir`, `CacheDir` and `ConfigDir` keep an app's state apart from the CLI's.
+
+### Fixed
+
+- A response cut off mid-stream ended the prompt with "stream ended without a finish reason", even with the timeout below fixed. gila now sends the round-trip again, up to twice in a row, shown as a `[retry]` line; the cut response never enters the history. The SDKs retry a request that fails, not a response that stops partway. The error also names the read error that cut the stream, which the OpenRouter SDK's reader discards.
+
+- OpenRouter streams longer than 60 seconds were cut off, and a prompt with a large context could time out before its first token and retry silently. The SDK's default HTTP client has a 60-second limit on the whole request, and its event reader drops the read error, so a cut stream reported only "stream ended without a finish reason". gila now gives the SDK a client that bounds connecting and waiting for headers but not the stream.
+
+- A model the provider does not list is refused, at startup and on `/model`, with a hint. `-m deepseek/deepseek-v4.1-flash` with `openai` suggests `openrouter:deepseek/deepseek-v4.1-flash`; before, it was accepted and failed on the first request. OpenAI's model list no longer offers models that cannot chat, such as `babbage-002` or `tts-1`.
+
+- A cost estimate uses the highest long-prompt tier the prompt passes. It took the last matching tier in list order, so a price list with tiers out of order priced a long prompt at a lower tier's rate.
 
 ### Changed
 
 - By default gila asks before a write outside the working directory, under version-control metadata or to a secret, and before reading a secret. 0.1.0 ran every call. With no one to ask, as under `--json`, such a call is refused. `--permissions all` restores the old behaviour.
 
 - `--json` `tool_call` and `tool_result` records carry a `label` field.
+
+- Tool lines in the REPL and on `-p`'s stderr start with `[tool] `, as in myra, so they stand apart from the answer when read without colour. They stay one line, cut at the label so the outcome remains.
 
 - `--help` wraps at 80 columns, or the terminal width if narrower, and names flag values (`--model ID`) in place of their Go types.
 

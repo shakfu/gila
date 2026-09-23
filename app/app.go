@@ -180,19 +180,23 @@ func New(opts Options) (*App, error) {
 }
 
 // Prepare loads the price list and resolves the context window and, for a local server, the
-// model. Failures here cost only estimates, so they are returned as warnings.
-func (a *App) Prepare(ctx context.Context) []error {
+// model. It returns an error when the provider lists models and the chosen one is not among
+// them. Other failures cost only estimates, so they come back as warnings.
+func (a *App) Prepare(ctx context.Context) ([]error, error) {
 	var warns []error
 	if a.ProviderID == "mock" {
-		return nil
+		return nil, nil
 	}
 	e, _ := provider.Find(a.ProviderID)
 	if a.Agent.Model == "" {
 		models, err := a.Models(ctx)
 		if err != nil || len(models) == 0 {
-			return append(warns, fmt.Errorf("no model given and %s lists none: %v", a.ProviderID, err))
+			return warns, fmt.Errorf("no model given and %s lists none: %v", a.ProviderID, err)
 		}
 		a.Agent.Model = models[0].ID
+	}
+	if err := a.checkModel(ctx, a.ProviderID, a.Agent.Provider, a.Agent.Model); err != nil {
+		return warns, err
 	}
 	// The price list serves every cloud provider a session may switch to. A gateway need not bill
 	// at the vendor's rates, and a local server bills nothing.
@@ -209,7 +213,7 @@ func (a *App) Prepare(ctx context.Context) []error {
 		}
 	}
 	a.resolveContext(ctx)
-	return warns
+	return warns, nil
 }
 
 // resolveContext sets the window from the provider's listing, then OpenRouter's.
@@ -235,23 +239,65 @@ func (a *App) resolveContext(ctx context.Context) {
 
 // Models lists the current provider's models, sorted by id, cached for the session.
 func (a *App) Models(ctx context.Context) ([]llm.Model, error) {
+	return a.modelsFor(ctx, a.ProviderID, a.Agent.Provider)
+}
+
+func (a *App) modelsFor(ctx context.Context, id string, p llm.Provider) ([]llm.Model, error) {
 	a.mu.Lock()
-	cached, ok := a.models[a.ProviderID]
+	cached, ok := a.models[id]
 	a.mu.Unlock()
 	if ok {
 		return cached, nil
 	}
 	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
-	models, err := a.Agent.Provider.Models(ctx)
+	models, err := p.Models(ctx)
 	if err != nil {
 		return nil, err
 	}
 	sort.Slice(models, func(i, j int) bool { return models[i].ID < models[j].ID })
 	a.mu.Lock()
-	a.models[a.ProviderID] = models
+	a.models[id] = models
 	a.mu.Unlock()
 	return models, nil
+}
+
+// checkModel refuses a model the provider does not list, so a model meant for another
+// provider fails here with a hint rather than on the first request. A provider that lists
+// nothing, or cannot be reached, is given the benefit of the doubt.
+func (a *App) checkModel(ctx context.Context, id string, p llm.Provider, model string) error {
+	models, err := a.modelsFor(ctx, id, p)
+	if err != nil || len(models) == 0 {
+		return nil
+	}
+	for _, m := range models {
+		if m.ID == model {
+			return nil
+		}
+	}
+	hint := "; /models in the REPL lists them"
+	switch {
+	case strings.Contains(model, "/") && id != "openrouter":
+		hint = fmt.Sprintf("; for an OpenRouter model, use openrouter:%s", model)
+	default:
+		if near := nearModels(models, model); len(near) > 0 {
+			hint = "; did you mean " + strings.Join(near, ", ") + "?"
+		}
+	}
+	return fmt.Errorf("%s does not offer model %q%s", id, model, hint)
+}
+
+// nearModels returns up to three listed ids that share the model's leading word, such as
+// gpt-5.5-mini for gpt-5.5-mni.
+func nearModels(models []llm.Model, model string) []string {
+	stem, _, _ := strings.Cut(strings.ToLower(model), "-")
+	var out []string
+	for _, m := range models {
+		if strings.HasPrefix(strings.ToLower(m.ID), stem) && len(out) < 3 {
+			out = append(out, m.ID)
+		}
+	}
+	return out
 }
 
 // Switch changes provider, model or both. An empty provider keeps the current one; an empty
@@ -279,13 +325,14 @@ func (a *App) Switch(ctx context.Context, providerID, model string) error {
 		model = a.Agent.Model
 	}
 	if model == "" {
-		lctx, cancel := context.WithTimeout(ctx, 15*time.Second)
-		models, err := p.Models(lctx)
-		cancel()
+		models, err := a.modelsFor(ctx, id, p)
 		if err != nil || len(models) == 0 {
 			return fmt.Errorf("name a model: %s lists none (%v)", id, err)
 		}
 		model = models[0].ID
+	}
+	if err := a.checkModel(ctx, id, p, model); err != nil {
+		return err
 	}
 
 	a.Agent.Provider, a.ProviderID, a.Agent.Model = p, id, model

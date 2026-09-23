@@ -61,6 +61,7 @@ Selection:
 - No `-P`: the provider last used, while its key is set; then the first of anthropic, openai, openrouter whose key is set. Local servers, `compat` included, are never chosen automatically, so an unreachable endpoint is never picked silently.
 - No `-m`: the model last used with that provider, then the default above.
 - `-m provider:model` names both, for example `-m openrouter:openai/gpt-5.5` or `-m ollama:qwen3:8b`.
+- A model the provider does not list is refused, at startup and on `/model`, with a hint: `openrouter:ID` for an id that belongs to OpenRouter, or the listed ids it resembles. A provider that lists no models is not checked. OpenAI's list leaves out models that cannot chat, such as embeddings, speech and image models.
 - Provider and model are remembered only after a turn streams, so a mistyped model is not reused.
 
 `compat` covers any other OpenAI-compatible Chat Completions server: LM Studio, vLLM, llama-swap, a machine on the LAN, or a hosted endpoint. For example, `gila -P compat --base-url http://localhost:1234/v1`. Like the local presets, it is never chosen automatically and gets no cost estimate.
@@ -70,8 +71,9 @@ Start llama-server with `--jinja` so tool calls work.
 ## Features
 
 - **Tools:** 4. `read` returns numbered lines, 2000 at most, with `offset` and `limit`, and summarises a binary file instead of dumping it. `write` creates or replaces a file. `edit` replaces one exact string, or every one with `replace_all`. `bash` runs `bash -c` in its own process group, 120 s by default and 600 s at most. A result over 32 KiB keeps its first fifth and last four fifths.
-- **REPL:** output goes to the terminal's scrollback. An input box and a status bar stay pinned below it. The bar shows the working directory, or a spinner, elapsed time and the current step, then the model, effort, context used and session cost. Assistant text streams as styled markdown, one line at a time. Each tool call gets one line, such as `read main.go:1-80 -> 80 lines` or `$ go test -> exit 1: FAIL`. Each prompt ends with a usage line: context, tokens in with the cached share, tokens out, cost.
-- **Headless:** `-p` streams the answer to stdout and everything else to stderr. `--json` prints one record per line: `start`, `turn`, `tool_call`, `tool_result`, then a final `result` with `outcome`, `text`, `error`, `turns`, `usage` and `context_used`. Exit status 0 when complete, 1 on error, 2 on a usage error, 130 when cancelled.
+- **REPL:** output goes to the terminal's scrollback. An input box and a status bar stay pinned below it. The bar shows the working directory, or a spinner, elapsed time and the current step, then the model, effort, context used and session cost. Assistant text streams as styled markdown, one line at a time. Each tool call gets one line, such as `[tool] read main.go:1-80 -> 80 lines` or `[tool] $ go test -> exit 1: FAIL`. Each prompt ends with a usage line: context, tokens in with the cached share, tokens out, cost.
+- **Headless:** `-p` streams the answer to stdout and everything else to stderr. `--json` prints one record per line: `start`, `turn`, `tool_call`, `tool_result` and `retry`, then a final `result` with `outcome`, `text`, `error`, `turns`, `usage` and `context_used`. Exit status 0 when complete, 1 on error, 2 on a usage error, 130 when cancelled.
+- **Network:** a response streams with no overall timeout, so a long answer is never cut off; Esc or Ctrl-C ends a stalled one. When a provider's SDK retries a request, the REPL's status bar and a `[retry] 1 after 503 Service Unavailable` line say why, as do `-p`'s stderr and a `retry` record in `--json`. Anthropic and OpenAI retry up to 4 times, the local providers twice, OpenRouter for up to a minute. A response cut off mid-stream is sent again by gila itself, up to twice in a row; the cut response never enters the history. `GILA_LOG=FILE` records each request's endpoint and status and the raw response stream, never request bodies or headers.
 - **Cost:** OpenRouter reports each request's cost. For `anthropic` and `openai`, gila estimates it from OpenRouter's public price list, marked `~`. It prices cached input at the cache rate and applies long-prompt tiers. The list is fetched without a key, at most once a day. `--base-url` turns estimates off, since a gateway need not bill at the vendor's rates. Local servers report no cost.
 - **Token use:**
   - Anthropic requests carry a cache breakpoint on the system prompt and an automatic one on the last block.
@@ -224,7 +226,7 @@ a := agent.New(agent.Config{
 	}),
 })
 res, err := a.Run(ctx, "make the tests pass", func(e agent.Event) {
-	emit(agent.Record(e)) // JSON-ready: text, reasoning, tool_start, tool_call, tool_result, turn
+	emit(agent.Record(e)) // JSON-ready: text, reasoning, tool_start, tool_call, tool_result, retry, turn
 })
 ```
 
@@ -287,6 +289,7 @@ Unset XDG variables fall back to `~/.config`, `~/.local/state` and `~/.cache`.
 | `GILA_PERMISSIONS` | default for `--permissions`, ahead of `settings.toml` |
 | `LLAMACPP_BASE_URL`, `OLLAMA_BASE_URL`, `COMPAT_BASE_URL` | local endpoints |
 | `COMPAT_API_KEY` | optional key for `compat` |
+| `GILA_LOG` | file to append each request's endpoint and status and the raw response stream to |
 | `NO_COLOR` | any value turns colour off |
 
 ## Licence

@@ -280,6 +280,7 @@ func TestRecordsAreJSONReady(t *testing.T) {
 		want string
 	}{
 		{Text{"hi"}, `{"text":"hi","type":"text"}`},
+		{Retry{Attempt: 2, Reason: "529 status code 529"}, `{"attempt":2,"reason":"529 status code 529","type":"retry"}`},
 		{ToolCall{Call: llm.ToolCall{ID: "1", Name: "read", Arguments: `{"path":"a"}`}, Label: "read a"},
 			`{"arguments":{"path":"a"},"id":"1","label":"read a","name":"read","type":"tool_call"}`},
 		{ToolCall{Call: llm.ToolCall{ID: "2", Name: "read", Arguments: `{"pa`}},
@@ -292,5 +293,28 @@ func TestRecordsAreJSONReady(t *testing.T) {
 		if err != nil || string(data) != c.want {
 			t.Errorf("got  %s\nwant %s (%v)", data, c.want, err)
 		}
+	}
+}
+
+// A stream cut off mid-response is sent again, up to maxCut times in a row, without leaving
+// the cut response in the history.
+func TestACutStreamIsSentAgain(t *testing.T) {
+	a, p, _ := newAgent(t, mock.Step{Text: "part", Incomplete: true}, mock.Step{Text: "whole"})
+	var retries []Retry
+	res, err := a.Run(context.Background(), "go", func(e Event) {
+		if r, ok := e.(Retry); ok {
+			retries = append(retries, r)
+		}
+	})
+	if err != nil || res.Text != "whole" || res.Turns != 1 {
+		t.Fatalf("res %+v err %v", res, err)
+	}
+	if len(retries) != 1 || retries[0].Attempt != 1 || len(a.History) != 2 || len(p.Requests) != 2 {
+		t.Fatalf("retries %v history %d requests %d", retries, len(a.History), len(p.Requests))
+	}
+	cut := mock.Step{Incomplete: true}
+	a, _, _ = newAgent(t, cut, cut, cut, mock.Step{Text: "never"})
+	if _, err := a.Run(context.Background(), "go", nil); !errors.Is(err, llm.ErrIncomplete) {
+		t.Fatalf("after %d resends: %v", maxCut, err)
 	}
 }

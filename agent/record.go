@@ -3,8 +3,8 @@ package agent
 import "encoding/json"
 
 // Record maps an event to a JSON-ready record with a "type" field: text, reasoning,
-// tool_start, tool_call, tool_result or turn. An error becomes its message, since error
-// values marshal as {}. The CLI's --json output prints the last three.
+// tool_start, tool_call, tool_result, retry or turn. An error becomes its message, since error
+// values marshal as {}. The CLI's --json output prints tool_call, tool_result, retry and turn.
 func Record(e Event) map[string]any {
 	switch e := e.(type) {
 	case Text:
@@ -25,6 +25,8 @@ func Record(e Event) map[string]any {
 		return rec
 	case Response:
 		return map[string]any{"type": "turn", "text": e.Text, "stop": e.Stop, "usage": e.Usage}
+	case Retry:
+		return map[string]any{"type": "retry", "attempt": e.Attempt, "reason": e.Reason}
 	}
 	return nil
 }

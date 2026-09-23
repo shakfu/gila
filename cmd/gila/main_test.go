@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/shakfu/gila/llm/llmtest"
 )
 
 var bin string
@@ -255,5 +257,32 @@ func TestCommandAllowlist(t *testing.T) {
 	}
 	if strings.Count(stdout, "refused: ask mode asks before bash") != 2 {
 		t.Errorf("want 2 refusals:\n%s", stdout)
+	}
+}
+
+// A retried request shows as a retry record in --json and a [retry] line on -p's stderr.
+func TestRetriesAreShown(t *testing.T) {
+	answer := llmtest.SSE("", `{"id":"g","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"done"},"finish_reason":"stop"}]}`, "", "[DONE]")
+	for _, asJSON := range []bool{true, false} {
+		srv := llmtest.New(t, llmtest.Status(200, `{"data":[]}`), llmtest.Status(502, `{"error":{"message":"upstream"}}`), answer)
+		dir := t.TempDir()
+		args := []string{"-P", "openrouter", "-m", "x/y", "--base-url", srv.URL, "-p", "go"}
+		if asJSON {
+			args = append(args, "--json")
+		}
+		cmd := exec.Command(bin, args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir, "OPENROUTER_API_KEY=k")
+		var out, errb bytes.Buffer
+		cmd.Stdout, cmd.Stderr = &out, &errb
+		if err := cmd.Run(); err != nil {
+			t.Fatalf("%v: %s", err, errb.String())
+		}
+		if asJSON && !strings.Contains(out.String(), `{"attempt":1,"reason":"502 Bad Gateway","type":"retry"}`) {
+			t.Errorf("no retry record:\n%s", out.String())
+		}
+		if !asJSON && !strings.Contains(errb.String(), "[retry] 1 after 502 Bad Gateway") {
+			t.Errorf("no retry line:\n%s", errb.String())
+		}
 	}
 }

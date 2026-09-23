@@ -4,6 +4,7 @@ package llmtest
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -46,10 +47,21 @@ func (s *Server) handle(w http.ResponseWriter, r *http.Request) {
 	s.scripts = s.scripts[1:]
 	s.mu.Unlock()
 
+	if code, body, ok := strings.Cut(script, "\n"); ok && strings.HasPrefix(code, "status ") {
+		var status int
+		fmt.Sscanf(code, "status %d", &status)
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(status)
+		_, _ = io.WriteString(w, body)
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.WriteHeader(http.StatusOK)
 	_, _ = io.WriteString(w, script)
 }
+
+// Status is a script that answers with an HTTP error instead of a stream.
+func Status(code int, body string) string { return fmt.Sprintf("status %d\n%s", code, body) }
 
 // SSE joins events given as (event name, data) pairs; an empty name omits the event line.
 func SSE(pairs ...string) string {

@@ -173,3 +173,17 @@ func TestForeignCallIDsAreMadeValidOnBothSides(t *testing.T) {
 		t.Fatalf("tool_use %v, tool_result %v", use, res)
 	}
 }
+
+// The SDK retries an overloaded request; the retry reaches the caller through the context.
+func TestRetriesAreReported(t *testing.T) {
+	srv := llmtest.New(t, llmtest.Status(529, `{"type":"error","error":{"type":"overloaded_error","message":"busy"}}`), plainAnswer)
+	var reasons []string
+	ctx := llm.WithRetries(context.Background(), func(_ int, r string) { reasons = append(reasons, r) })
+	resp, err := New("anthropic", "k", srv.URL).Stream(ctx, request("claude-x", llm.Message{Role: llm.User, Text: "hi"}), func(llm.Event) {})
+	if err != nil || resp.Message.Text != "done" {
+		t.Fatalf("%v %+v", err, resp)
+	}
+	if len(reasons) != 1 || !strings.HasPrefix(reasons[0], "529") {
+		t.Fatalf("reasons %v", reasons)
+	}
+}

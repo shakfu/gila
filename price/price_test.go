@@ -82,3 +82,17 @@ func TestShort(t *testing.T) {
 		}
 	}
 }
+
+// The highest threshold a prompt passes decides the rate, in whatever order the tiers come.
+func TestTierOrderDoesNotMatter(t *testing.T) {
+	base := Rates{Prompt: 1}
+	low, high := Tier{MinPrompt: 100, Rates: Rates{Prompt: 2}}, Tier{MinPrompt: 1000, Rates: Rates{Prompt: 3}}
+	for _, tiers := range [][]Tier{{low, high}, {high, low}} {
+		e := Entry{Rates: &base, Tiers: tiers}
+		for input, want := range map[int64]float64{50: 50, 500: 1000, 5000: 15000} {
+			if got, _ := e.Cost(llm.Usage{Input: input}); got != want {
+				t.Errorf("tiers %v, input %d: cost %g, want %g", tiers, input, got, want)
+			}
+		}
+	}
+}

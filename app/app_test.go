@@ -3,11 +3,13 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/shakfu/gila/llm"
 	"github.com/shakfu/gila/permission"
 	"github.com/shakfu/gila/state"
 	"github.com/shakfu/gila/tool"
@@ -269,5 +271,57 @@ func TestNetworkToolsFollowTheHostsAllowlist(t *testing.T) {
 	}
 	if r := a.Agent.History[2].Results[1]; !r.IsError || !strings.Contains(r.Content, "evil.com, which is not in the hosts allowlist") {
 		t.Fatalf("result %+v", r)
+	}
+}
+
+// fakeModels lists fixed models, or fails.
+type fakeModels struct {
+	llm.Provider
+	ids []string
+	err error
+}
+
+func (f fakeModels) Name() string { return "openai" }
+func (f fakeModels) Models(context.Context) ([]llm.Model, error) {
+	var out []llm.Model
+	for _, id := range f.ids {
+		out = append(out, llm.Model{ID: id})
+	}
+	return out, f.err
+}
+
+func TestModelsAreCheckedAgainstTheProvidersList(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("OPENAI_API_KEY", "k")
+	a, err := New(Options{Provider: "openai", Model: "gpt-5.5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	listed := fakeModels{ids: []string{"gpt-5.5", "gpt-5.5-mini", "o4"}}
+	a.Agent.Provider = listed
+	ctx := context.Background()
+	for model, want := range map[string]string{
+		"gpt-5.5-mini":                 "",
+		"deepseek/deepseek-v4.1-flash": "use openrouter:deepseek/deepseek-v4.1-flash",
+		"gpt-5.5-mni":                  "did you mean gpt-5.5, gpt-5.5-mini?",
+		"claude-opus-5":                "/models in the REPL lists them",
+	} {
+		err := a.checkModel(ctx, "openai", listed, model)
+		if want == "" && err != nil || want != "" && (err == nil || !strings.Contains(err.Error(), want)) {
+			t.Errorf("%s: got %v, want %q", model, err, want)
+		}
+	}
+	// A provider that cannot list its models is not second-guessed.
+	if err := a.checkModel(ctx, "compat", fakeModels{err: errors.New("no /models")}, "anything"); err != nil {
+		t.Errorf("unlisted provider: %v", err)
+	}
+	// A refused /model changes nothing.
+	a.models = map[string][]llm.Model{}
+	if err := a.Switch(ctx, "", "deepseek/deepseek-v4.1-flash"); err == nil || a.Agent.Model != "gpt-5.5" {
+		t.Fatalf("switch: %v, model %q", err, a.Agent.Model)
+	}
+	if err := a.Switch(ctx, "", "o4"); err != nil || a.Agent.Model != "o4" {
+		t.Fatalf("switch to a listed model: %v, model %q", err, a.Agent.Model)
 	}
 }
