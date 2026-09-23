@@ -12,7 +12,7 @@ import (
 	"github.com/shakfu/gila/llm"
 )
 
-// OutputCap bounds one tool result in bytes, about 8k tokens. Over the cap the first fifth and
+// OutputCap is the default bound on one tool result in bytes, about 8k tokens. Over the cap the first fifth and
 // the last four fifths are kept, since errors and summaries come last.
 const OutputCap = 32 << 10
 
@@ -41,6 +41,12 @@ type Tool interface {
 // is taken to modify the environment.
 type ReadOnly interface {
 	ReadOnly() bool
+}
+
+// Previewer is implemented by a tool that can show, before a call runs, what it would change,
+// such as a diff. Preview must change nothing.
+type Previewer interface {
+	Preview(args json.RawMessage) (string, error)
 }
 
 // Hosts is implemented by a network tool: it names the hosts a call contacts, such as
@@ -80,6 +86,45 @@ type Env struct {
 	Root string
 	// Jobs tracks background processes left by bash, killed when the agent exits.
 	Jobs *Jobs
+	// Limits bound the built-in tools; a zero field takes its value in DefaultLimits.
+	Limits Limits
+}
+
+// Limits bound what the built-in tools return, read and run. OutputCap, ReadLines and
+// ReadLineBytes bound what reaches the model, so they set the tokens a call can cost.
+type Limits struct {
+	// OutputCap bounds one result in bytes; agent.Config.OutputCap should match it.
+	OutputCap int
+	// ReadLines bounds the lines one read returns; ReadLineBytes bounds one line.
+	ReadLines, ReadLineBytes int
+	// BashTimeout is the default seconds before a command is killed; BashMaxTimeout bounds
+	// what a call may ask for.
+	BashTimeout, BashMaxTimeout int
+	// DiffBytes bounds the existing file a write preview reads.
+	DiffBytes int
+}
+
+// DefaultLimits are the limits a zero field takes.
+var DefaultLimits = Limits{
+	OutputCap: OutputCap, ReadLines: 2000, ReadLineBytes: 2000,
+	BashTimeout: 120, BashMaxTimeout: 600, DiffBytes: 1 << 20,
+}
+
+// limits returns e.Limits with each zero field set to its default.
+func (e Env) limits() Limits {
+	l, d := e.Limits, DefaultLimits
+	for _, f := range []struct {
+		v *int
+		d int
+	}{
+		{&l.OutputCap, d.OutputCap}, {&l.ReadLines, d.ReadLines}, {&l.ReadLineBytes, d.ReadLineBytes},
+		{&l.BashTimeout, d.BashTimeout}, {&l.BashMaxTimeout, d.BashMaxTimeout}, {&l.DiffBytes, d.DiffBytes},
+	} {
+		if *f.v == 0 {
+			*f.v = f.d
+		}
+	}
+	return l
 }
 
 // Default returns read, write, edit and bash.

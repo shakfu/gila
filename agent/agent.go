@@ -13,7 +13,7 @@ import (
 	"github.com/shakfu/gila/tool"
 )
 
-// maxCut bounds the resends of one round-trip whose stream ended early.
+// maxCut is the default bound on resends of one round-trip whose stream ended early.
 const maxCut = 2
 
 // Declined is the result recorded for a call Approve refused.
@@ -44,6 +44,11 @@ type Config struct {
 	Effort    string
 	// MaxTurns caps provider round-trips per prompt. Default 64.
 	MaxTurns int
+	// StreamRetries bounds the resends of a round-trip whose stream ended early. Each resend
+	// sends the whole request again. Default 2; negative means none.
+	StreamRetries int
+	// OutputCap bounds one tool result in bytes. Default tool.OutputCap.
+	OutputCap int
 	// Context is the model's window in tokens; 0 when unknown.
 	Context int64
 	// Prices estimates cost for providers that report none. May be nil.
@@ -71,6 +76,15 @@ func New(cfg Config) *Agent {
 	}
 	if cfg.MaxTurns == 0 {
 		cfg.MaxTurns = 64
+	}
+	switch {
+	case cfg.StreamRetries == 0:
+		cfg.StreamRetries = maxCut
+	case cfg.StreamRetries < 0:
+		cfg.StreamRetries = 0
+	}
+	if cfg.OutputCap == 0 {
+		cfg.OutputCap = tool.OutputCap
 	}
 	return &Agent{Config: cfg}
 }
@@ -162,7 +176,7 @@ func (a *Agent) Run(ctx context.Context, prompt string, emit func(Event)) (Resul
 		})
 		// A stream that ended early left no trace in the history, so the same request can go
 		// again. The SDKs retry failed requests but not a response cut off mid-stream.
-		if errors.Is(err, llm.ErrIncomplete) && ctx.Err() == nil && cut < maxCut {
+		if errors.Is(err, llm.ErrIncomplete) && ctx.Err() == nil && cut < a.StreamRetries {
 			cut++
 			emit(Retry{Attempt: cut, Reason: err.Error()})
 			continue
@@ -270,7 +284,7 @@ func (a *Agent) runTools(ctx context.Context, calls []llm.ToolCall, skip error, 
 		if err != nil {
 			results = append(results, llm.ToolResult{CallID: c.ID, Content: err.Error(), IsError: true})
 		} else {
-			results = append(results, llm.ToolResult{CallID: c.ID, Content: tool.Cap(out.Output, tool.OutputCap)})
+			results = append(results, llm.ToolResult{CallID: c.ID, Content: tool.Cap(out.Output, a.OutputCap)})
 		}
 	}
 	return results, ctx.Err()

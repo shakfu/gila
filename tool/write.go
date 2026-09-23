@@ -1,13 +1,17 @@
 package tool
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
+
+	"github.com/aymanbagabas/go-udiff"
 
 	"github.com/shakfu/gila/llm"
 )
@@ -37,12 +41,9 @@ func (Write) Label(raw json.RawMessage) string {
 }
 
 func (w Write) Run(_ context.Context, raw json.RawMessage) (Result, error) {
-	var a writeArgs
-	if err := decode(raw, &a, "path", "content"); err != nil {
+	a, err := parseWrite(raw)
+	if err != nil {
 		return Result{}, err
-	}
-	if a.Path == "" {
-		return Result{}, fmt.Errorf("path is required")
 	}
 	path := w.abs(a.Path)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -53,6 +54,53 @@ func (w Write) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 	}
 	size := plural(len(a.Content), "byte")
 	return Result{Output: "wrote " + size + " to " + a.Path, Summary: size}, nil
+}
+
+func parseWrite(raw json.RawMessage) (writeArgs, error) {
+	var a writeArgs
+	if err := decode(raw, &a, "path", "content"); err != nil {
+		return a, err
+	}
+	if a.Path == "" {
+		return a, fmt.Errorf("path is required")
+	}
+	return a, nil
+}
+
+// Preview returns a unified diff against the file the write replaces, following a symlink as
+// Run does; a new file diffs against /dev/null. A file over Limits.DiffBytes or holding a NUL
+// byte gets a one-line summary instead: Run never reads the old file, so without a bound a
+// preview could cost more than the write.
+func (w Write) Preview(raw json.RawMessage) (string, error) {
+	a, err := parseWrite(raw)
+	if err != nil {
+		return "", err
+	}
+	f, info, err := openRegular(w.abs(a.Path), a.Path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return udiff.Unified("/dev/null", a.Path, "", a.Content), nil
+	}
+	if err != nil {
+		return "", err
+	}
+	defer f.Close()
+	diffCap := w.limits().DiffBytes
+	data, err := io.ReadAll(io.LimitReader(f, int64(diffCap)+1))
+	if err != nil {
+		return "", err
+	}
+	if len(data) > diffCap {
+		return fmt.Sprintf("replaces %s (%s) with %s; too large to diff", a.Path,
+			plural(int(info.Size()), "byte"), plural(len(a.Content), "byte")), nil
+	}
+	if bytes.IndexByte(data, 0) >= 0 {
+		return fmt.Sprintf("replaces binary %s (%s) with %s", a.Path,
+			plural(len(data), "byte"), plural(len(a.Content), "byte")), nil
+	}
+	if string(data) == a.Content {
+		return "content unchanged", nil
+	}
+	return udiff.Unified(a.Path, a.Path, string(data), a.Content), nil
 }
 
 // replace writes data to path through a temporary file and a rename, so a crash or a full

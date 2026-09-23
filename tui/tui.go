@@ -65,9 +65,10 @@ type (
 	}
 	// approvalMsg asks the user whether a call may run; the agent waits on reply.
 	approvalMsg struct {
-		call  llm.ToolCall
-		label string
-		reply chan bool
+		call    llm.ToolCall
+		label   string
+		preview string // such as a diff; empty when there is none
+		reply   chan bool
 	}
 	switchedMsg struct{ err error }
 	modelsMsg   struct {
@@ -222,7 +223,7 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.approval = &msg
 			m.phase = "waiting for approval"
-			for _, l := range ApprovalLines(m.st, msg.label, m.width) {
+			for _, l := range ApprovalLines(m.st, msg.label, msg.preview, m.width) {
 				m.out(l)
 			}
 		}
@@ -346,7 +347,7 @@ func (m *model) start(text string) tea.Cmd {
 	ch := make(chan tea.Msg, 256)
 	m.events = ch
 	// Set before the run starts, so the agent goroutine only reads it.
-	m.app.SetPermissions("", askVia(ch))
+	m.app.SetPermissions("", askVia(ch, m.app.Preview))
 	ag := m.app.Agent
 	go func() {
 		res, err := ag.Run(ctx, text, func(e agent.Event) { ch <- eventMsg{e} })
@@ -357,12 +358,13 @@ func (m *model) start(text string) tea.Cmd {
 }
 
 // askVia sends approval questions to the REPL through the run's event channel and waits for
-// the answer, or for the run to be cancelled.
-func askVia(ch chan<- tea.Msg) permission.AskFunc {
+// the answer, or for the run to be cancelled. The preview is made here, off the UI goroutine,
+// since it may read files.
+func askVia(ch chan<- tea.Msg, preview func(llm.ToolCall) string) permission.AskFunc {
 	return func(ctx context.Context, call llm.ToolCall, label string) (bool, error) {
 		reply := make(chan bool, 1)
 		select {
-		case ch <- approvalMsg{call: call, label: label, reply: reply}:
+		case ch <- approvalMsg{call: call, label: label, preview: preview(call), reply: reply}:
 		case <-ctx.Done():
 			return false, ctx.Err()
 		}

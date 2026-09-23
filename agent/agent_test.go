@@ -334,3 +334,15 @@ func TestACutStreamIsSentAgain(t *testing.T) {
 		t.Fatalf("after %d resends: %v", maxCut, err)
 	}
 }
+
+// Each resend sends the whole request again, so StreamRetries can turn them off.
+func TestStreamRetriesCanBeTurnedOff(t *testing.T) {
+	if got := New(Config{StreamRetries: -1}).StreamRetries; got != 0 {
+		t.Fatalf("negative became %d", got)
+	}
+	a, p, _ := newAgent(t, mock.Step{Text: "part", Incomplete: true}, mock.Step{Text: "whole"})
+	a.StreamRetries = 0
+	if _, err := a.Run(context.Background(), "go", nil); !errors.Is(err, llm.ErrIncomplete) || len(p.Requests) != 1 {
+		t.Fatalf("err %v after %d requests", err, len(p.Requests))
+	}
+}

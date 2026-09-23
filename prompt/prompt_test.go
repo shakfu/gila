@@ -40,7 +40,7 @@ func TestAgentsFilesRunFromUserToNearest(t *testing.T) {
 		t.Fatalf("got %v\nwant %v", got, want)
 	}
 
-	p := Build(sub, cfg)
+	p := Build(sub, cfg, Options{})
 	if !strings.HasPrefix(p, "You are gila") || !strings.Contains(p, "- Working directory: "+sub) ||
 		!strings.Contains(p, runtime.GOOS) || !strings.Contains(p, "- Command shell: bash") {
 		t.Fatalf("environment missing:\n%s", p)
@@ -67,7 +67,7 @@ func TestWithoutARepositoryOnlyTheDirectorysFileApplies(t *testing.T) {
 func TestBlankInstructionsAreSkipped(t *testing.T) {
 	dir := t.TempDir()
 	mkfile(t, filepath.Join(dir, AgentsFile), " \n\n")
-	if strings.Contains(Build(dir, ""), "# "+filepath.Join(dir, AgentsFile)) {
+	if strings.Contains(Build(dir, "", Options{}), "# "+filepath.Join(dir, AgentsFile)) {
 		t.Fatal("a blank file got a section")
 	}
 }
@@ -87,5 +87,22 @@ func TestSkillsNeedFrontmatterWithADescription(t *testing.T) {
 	}
 	if skills[1].Frontmatter != "name: zip\ndescription: Pack files." {
 		t.Fatalf("got %q", skills[1].Frontmatter)
+	}
+}
+
+// AGENTS.md and skills are sent with every request, so each can be left out.
+func TestAgentsAndSkillsCanBeLeftOut(t *testing.T) {
+	dir, cfg := t.TempDir(), t.TempDir()
+	mkfile(t, filepath.Join(dir, AgentsFile), "house rules")
+	mkfile(t, filepath.Join(cfg, "skills", "zip", "SKILL.md"), "---\ndescription: Pack files.\n---\n")
+	for o, want := range map[Options][2]bool{
+		{}:               {true, true},
+		{NoAgents: true}: {false, true},
+		{NoSkills: true}: {true, false},
+	} {
+		p := Build(dir, cfg, o)
+		if strings.Contains(p, "house rules") != want[0] || strings.Contains(p, "Pack files.") != want[1] {
+			t.Errorf("%+v:\n%s", o, p)
+		}
 	}
 }

@@ -4,6 +4,10 @@
 
 ### Added
 
+- `settings.toml` sets the limits that trade tokens, time or I/O, in `[agent]`, `[tools]`, `[prompt]` and `[prices]`: output tokens, round-trips, context window, stream resends, tool result size, read lines, bash timeouts, the write preview's read limit, AGENTS.md and skills in the system prompt, and the price list fetch. See Tuning in the README. `--max-tokens`, `--max-turns` and `--context` win over the file. Fixes and safety checks have no switch, since turning one off only brings back its bug. For embedding apps, `tool.Env.Limits`, `agent.Config.StreamRetries` and `agent.Config.OutputCap` take the same values, and `prompt.Build` takes a `prompt.Options`.
+
+- The REPL shows the unified diff of an `edit` or `write` when it asks to approve it; `diff = false` under `[permissions]` in `settings.toml` turns this off. An edit's diff comes from the same code as the edit, so it covers the CRLF rewrite and `replace_all`. A write diffs against the file it replaces, or `/dev/null` for a new file; a binary file or one over 1 MiB gets a one-line summary, since `write` itself never reads the old file. Tools opt in through `tool.Previewer`.
+
 - Permission modes: `--permissions auto|ask|all|read-only`, `GILA_PERMISSIONS`, or `/permissions` in the REPL. The REPL asks inline, `-p` asks on the terminal, and `--json` refuses what would ask. A refused or declined call goes back to the model with the reason. No mode confines `bash`; only a kernel sandbox could.
 
 - `~/.config/gila/settings.toml`. Under `[permissions]`, `mode` sets the default mode, below `--permissions` and `GILA_PERMISSIONS`. `secrets` and `protected` add paths that need approval. `commands` and `hosts` allowlist `bash` commands and network hosts. An unknown key or a malformed entry stops gila, so a typo never drops a protection silently.

@@ -88,9 +88,12 @@ func main() {
 			"touching secrets and writing outside the root or to protected paths")
 	fl.StringVar(&f.Effort, "effort", "", "reasoning `LEVEL`: low, medium, high, xhigh, max")
 	fl.StringVar(&f.Mock, "mock", "", "replay a scripted JSON conversation from `FILE`")
-	fl.Int64Var(&f.MaxTokens, "max-tokens", 32000, "cap each response at `N` output tokens")
-	fl.IntVar(&f.MaxTurns, "max-turns", 64, "allow `N` provider round-trips per prompt")
-	fl.Int64Var(&f.Context, "context", 0, "context window in `TOKENS` (default: from the model list)")
+	fl.Int64Var(&f.MaxTokens, "max-tokens", 0, "cap each response at `N` output tokens "+
+		"(default: settings.toml, else 32000)")
+	fl.IntVar(&f.MaxTurns, "max-turns", 0, "allow `N` provider round-trips per prompt "+
+		"(default: settings.toml, else 64)")
+	fl.Int64Var(&f.Context, "context", 0, "context window in `TOKENS` "+
+		"(default: settings.toml, else from the model list)")
 	fl.BoolVar(&f.json, "json", false, "with -p: print JSON lines, ending in a result record")
 	fl.BoolVar(&f.noColor, "no-color", false, "disable colour; also off when NO_COLOR is set")
 	fl.BoolVar(&f.Refresh, "refresh-models", false, "refetch the price list, ignoring the cache")

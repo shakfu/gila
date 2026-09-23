@@ -100,7 +100,7 @@ func TestToolLine(t *testing.T) {
 func TestApprovalShowsTheWholeCall(t *testing.T) {
 	st := NewStyles()
 	label := "$ echo harmless-looking-prefix; rm -rf important-directory\ncat <<EOF\n\x1b[2Khidden\nEOF"
-	got := ansi.Strip(strings.Join(ApprovalLines(st, label, 30), "\n"))
+	got := ansi.Strip(strings.Join(ApprovalLines(st, label, "", 30), "\n"))
 	joined := strings.ReplaceAll(got, "\n", "")
 	for _, want := range []string{"rm -rf important-directory", "cat <<EOF", `\x1b[2Khidden`} {
 		if !strings.Contains(joined, want) {
@@ -114,5 +114,20 @@ func TestApprovalShowsTheWholeCall(t *testing.T) {
 		if ansi.StringWidth(l) > 30 {
 			t.Errorf("line wider than 30: %q", l)
 		}
+	}
+}
+
+func TestApprovalColoursTheDiff(t *testing.T) {
+	st := NewStyles()
+	diff := "--- f\n+++ f\n@@ -1,2 +1,2 @@\n a\r\n-b\r\n+c\x1b[2K\r\n"
+	got := ApprovalLines(st, "edit f", diff, 80)
+	plain := ansi.Strip(strings.Join(got, "\n"))
+	for _, want := range []string{"  -b", `  +c\x1b[2K`, "  @@ -1,2 +1,2 @@"} {
+		if !strings.Contains(plain, want) {
+			t.Errorf("missing %q in\n%s", want, plain)
+		}
+	}
+	if strings.Contains(plain, `\x0d`) || strings.HasSuffix(plain, "\n") {
+		t.Errorf("CR or trailing blank line shown:\n%q", plain)
 	}
 }

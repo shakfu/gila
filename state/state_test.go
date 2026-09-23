@@ -59,10 +59,10 @@ func TestSettings(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	write("[permissions]\nmode = \"ask\"\nsecrets = [\"*.pem\"]\nprotected = [\"go.sum\"]\ncommands = [\"go test\"]\n")
+	write("[permissions]\nmode = \"ask\"\nsecrets = [\"*.pem\"]\nprotected = [\"go.sum\"]\ncommands = [\"go test\"]\ndiff = false\n")
 	s, err := LoadSettings(dir)
 	if err != nil || s.Permissions.Mode != "ask" || s.Permissions.Secrets[0] != "*.pem" ||
-		s.Permissions.Protected[0] != "go.sum" || s.Permissions.Commands[0] != "go test" {
+		s.Permissions.Protected[0] != "go.sum" || s.Permissions.Commands[0] != "go test" || s.Permissions.Diff == nil || *s.Permissions.Diff {
 		t.Fatalf("%+v %v", s, err)
 	}
 	for text, want := range map[string]string{
@@ -72,6 +72,10 @@ func TestSettings(t *testing.T) {
 		"[permissions]\nmode = \"yolo\"\n":             "permissions must be",
 		"[permissions]\ncommands = [\"a | b\"]\n":      "bad command",
 		"[permissions]\nhosts = [\"https://x.com\"]\n": "bad host",
+		"[agent]\nmax_tokens = 0\n":                    "agent.max_tokens must be at least 1",
+		"[agent]\nstream_retries = -1\n":               "agent.stream_retries must be at least 0",
+		"[tools]\noutput_cap = 100\n":                  "tools.output_cap must be at least 4096",
+		"[prompt]\nskill = false\n":                    "unknown keys: prompt.skill",
 	} {
 		write(text)
 		if _, err := LoadSettings(dir); err == nil || !strings.Contains(err.Error(), want) {

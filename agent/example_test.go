@@ -23,7 +23,7 @@ func Example() {
 			mock.Step{Text: "The answer is 42.", Usage: llm.Usage{Input: 120, Output: 8}},
 		),
 		Model:  "claude-opus-5",
-		System: prompt.Build(dir, ""),
+		System: prompt.Build(dir, "", prompt.Options{}),
 		Tools:  tool.Default(tool.Env{Root: dir, Jobs: &tool.Jobs{}}),
 	})
 	res, err := a.Run(context.Background(), "what does echo 42 print?", func(e agent.Event) {

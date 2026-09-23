@@ -35,10 +35,12 @@ Flags:
                            and writing outside the root or to protected paths
       --effort LEVEL       reasoning LEVEL: low, medium, high, xhigh, max
       --mock FILE          replay a scripted JSON conversation from FILE
-      --max-tokens N       cap each response at N output tokens (default 32000)
-      --max-turns N        allow N provider round-trips per prompt (default 64)
-      --context TOKENS     context window in TOKENS (default: from the
-                           model list)
+      --max-tokens N       cap each response at N output tokens (default:
+                           settings.toml, else 32000)
+      --max-turns N        allow N provider round-trips per prompt
+                           (default: settings.toml, else 64)
+      --context TOKENS     context window in TOKENS (default:
+                           settings.toml, else from the model list)
       --json               with -p: print JSON lines, ending in a result record
       --no-color           disable colour; also off when NO_COLOR is set
       --refresh-models     refetch the price list, ignoring the cache
@@ -150,7 +152,10 @@ secrets = ["*.pem", "!public.pem", "secrets/*"]
 protected = ["go.sum", "migrations"]
 commands = ["go test", "go vet", "git status$", "git diff$"]
 hosts = ["pkg.go.dev", "docs.rs", "*.githubusercontent.com"]
+diff = false
 ```
+
+The REPL shows the unified diff of an `edit` or `write` below its approval prompt; `diff = false` turns this off. A `write` over a binary file or one over 1 MiB gets a one-line summary instead. A tool shows one by implementing `tool.Previewer`.
 
 An unknown key or a malformed entry stops gila with the file's path, so a typo never drops a protection silently.
 
@@ -161,6 +166,48 @@ These checks guard against mistakes, not an adversary.
 - `bash` is not confined: `cat .env`, `rm -rf .git` or `curl` to any host through it are not caught, in any mode where it runs.
 - A symlink swapped between the check and the write can redirect it.
 - A host is checked by name, not by where it resolves or redirects.
+
+### Tuning
+
+`settings.toml` also sets limits that trade tokens, time or I/O. A key left out keeps the default. The `max_tokens`, `max_turns` and `context` keys apply only when their flags are not given.
+
+```toml
+[agent]
+max_tokens = 32000     # output tokens per response
+max_turns = 64         # round-trips per prompt
+context = 200000       # window in tokens; default: from the model list
+stream_retries = 2     # resends of a response cut off mid-stream
+
+[tools]
+output_cap = 32768     # bytes of one tool result
+read_lines = 2000      # lines one read returns
+read_line_bytes = 2000 # bytes kept of one line
+bash_timeout = 120     # seconds, when the call sets none
+bash_max_timeout = 600 # seconds a call may ask for
+
+[permissions]
+diff_max_bytes = 1048576 # bytes of the old file a write preview reads
+
+[prompt]
+agents_md = true       # AGENTS.md files in the system prompt
+skills = true          # skills' frontmatter in the system prompt
+
+[prices]
+fetch = true           # OpenRouter's price list, fetched once a day
+```
+
+| Key | Affects |
+|-|-|
+| `max_tokens`, `max_turns` | tokens per prompt |
+| `stream_retries` | tokens: each resend sends the whole request again, mostly as cache reads |
+| `output_cap`, `read_lines`, `read_line_bytes` | tokens: each result stays in the history and is sent again with every later request |
+| `agents_md`, `skills` | tokens on every request |
+| `context` | when gila stops a conversation as full, at 95% |
+| `bash_timeout`, `bash_max_timeout` | wall-clock time |
+| `diff_max_bytes` | local I/O when approving a write |
+| `fetch` | one request at startup; off also drops cost estimates and, for OpenAI, the context window |
+
+The system prompt and tool descriptions are fixed for a session, so these settings do not break prompt caching within one.
 
 ### REPL
 
@@ -276,7 +323,7 @@ The binary is about 40 MB, mostly the three SDKs; startup takes about 10 ms. See
 | Path | Holds |
 |-|-|
 | `$XDG_CONFIG_HOME/gila/AGENTS.md`, `skills/` | your instructions and skills |
-| `$XDG_CONFIG_HOME/gila/settings.toml` | permission mode, secrets, protected paths, command and host allowlists |
+| `$XDG_CONFIG_HOME/gila/settings.toml` | permission mode, secrets, protected paths, command and host allowlists, approval diffs, limits |
 | `$XDG_STATE_HOME/gila/state.json` | last provider, model per provider, effort |
 | `$XDG_STATE_HOME/gila/history` | REPL history, verbatim, mode 0600 |
 | `$XDG_CACHE_HOME/gila/openrouter-models.json` | the price list |

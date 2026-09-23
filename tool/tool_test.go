@@ -76,14 +76,14 @@ func TestReadRefusesDirectoriesAndSummarisesBinaries(t *testing.T) {
 
 func TestReadCutsLongLines(t *testing.T) {
 	e := env(t)
-	write(t, filepath.Join(e.Root, "long.txt"), strings.Repeat("x", 3*lineCap)+"\nshort\n")
+	write(t, filepath.Join(e.Root, "long.txt"), strings.Repeat("x", 3*DefaultLimits.ReadLineBytes)+"\nshort\n")
 	res, err := Read{e}.Run(context.Background(), args(t, map[string]any{"path": "long.txt"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	lines := strings.Split(res.Output, "\n")
-	if got := len(strings.TrimPrefix(lines[0], "     1\t")); got != lineCap {
-		t.Fatalf("first line kept %d bytes, want %d", got, lineCap)
+	if got := len(strings.TrimPrefix(lines[0], "     1\t")); got != DefaultLimits.ReadLineBytes {
+		t.Fatalf("first line kept %d bytes, want %d", got, DefaultLimits.ReadLineBytes)
 	}
 	if lines[1] != "     2\tshort" || !strings.Contains(res.Output, "long lines were cut") {
 		t.Fatalf("got %q", res.Output)
@@ -385,5 +385,100 @@ func TestReadAndEditRefuseAFIFOWithoutBlocking(t *testing.T) {
 		case <-time.After(5 * time.Second):
 			t.Fatal("opening a FIFO blocked")
 		}
+	}
+}
+
+// The preview is the diff Run applies, including the CRLF rewrite, and it writes nothing.
+func TestEditPreviewMatchesRun(t *testing.T) {
+	e := env(t)
+	path := filepath.Join(e.Root, "f")
+	write(t, path, "one\r\ntwo\r\nthree\r\n")
+	raw := args(t, map[string]any{"path": "f", "old_string": "one\ntwo", "new_string": "1\n2"})
+	diff, err := Edit{e}.Preview(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "one\r\ntwo\r\nthree\r\n" {
+		t.Fatalf("preview wrote %q", data)
+	}
+	for _, want := range []string{"--- f", "+++ f", "-one\r\n", "-two\r\n", "+1\r\n", "+2\r\n", " three\r\n"} {
+		if !strings.Contains(diff, want) {
+			t.Errorf("missing %q in\n%s", want, diff)
+		}
+	}
+	if _, err := (Edit{e}).Run(context.Background(), raw); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(path); string(data) != "1\r\n2\r\nthree\r\n" {
+		t.Fatalf("run wrote %q", data)
+	}
+	if _, err := (Edit{e}).Preview(args(t, map[string]any{"path": "f", "old_string": "zzz", "new_string": "y"})); err == nil {
+		t.Fatal("a preview of a failing edit succeeded")
+	}
+}
+
+// A write previews as a diff against the file it replaces, or against /dev/null for a new
+// file, and writes nothing. Files a diff cannot serve get a summary.
+func TestWritePreview(t *testing.T) {
+	e := env(t)
+	preview := func(path, content string) string {
+		t.Helper()
+		out, err := Write{e}.Preview(args(t, map[string]any{"path": path, "content": content}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return out
+	}
+	if got := preview("new/f", "a\nb\n"); !strings.Contains(got, "--- /dev/null") || !strings.Contains(got, "+a\n+b\n") {
+		t.Errorf("new file: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(e.Root, "new")); err == nil {
+		t.Error("preview created the parent directory")
+	}
+	write(t, filepath.Join(e.Root, "f"), "a\nb\n")
+	if got := preview("f", "a\nc\n"); !strings.Contains(got, "-b\n+c\n") || !strings.Contains(got, " a\n") {
+		t.Errorf("overwrite: %q", got)
+	}
+	if got := preview("f", "a\nb\n"); got != "content unchanged" {
+		t.Errorf("same content: %q", got)
+	}
+	// Run follows a symlink to its target, so the preview must diff the target.
+	if err := os.Symlink("f", filepath.Join(e.Root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	if got := preview("link", "a\nc\n"); !strings.Contains(got, "-b\n+c\n") {
+		t.Errorf("symlink: %q", got)
+	}
+	write(t, filepath.Join(e.Root, "bin"), "a\x00b")
+	if got := preview("bin", "x"); got != "replaces binary bin (3 bytes) with 1 byte" {
+		t.Errorf("binary: %q", got)
+	}
+	write(t, filepath.Join(e.Root, "big"), strings.Repeat("x", DefaultLimits.DiffBytes+1))
+	if got := preview("big", "x"); !strings.Contains(got, "too large to diff") {
+		t.Errorf("large: %q", got)
+	}
+	if data, _ := os.ReadFile(filepath.Join(e.Root, "f")); string(data) != "a\nb\n" {
+		t.Errorf("preview wrote %q", data)
+	}
+}
+
+// Limits set on Env reach each tool at run time; zero fields keep the defaults.
+func TestLimitsApply(t *testing.T) {
+	e := env(t)
+	e.Limits = Limits{ReadLines: 2, ReadLineBytes: 3, DiffBytes: 4, OutputCap: 4096}
+	write(t, filepath.Join(e.Root, "f"), "abcdef\nb\nc\n")
+	res, err := Read{e}.Run(context.Background(), args(t, map[string]any{"path": "f"}))
+	if err != nil || res.Summary != "2 lines" || !strings.Contains(res.Output, "1\tabc\n") {
+		t.Errorf("read: %q %v", res.Output, err)
+	}
+	if got, _ := (Write{e}).Preview(args(t, map[string]any{"path": "f", "content": "x"})); !strings.Contains(got, "too large to diff") {
+		t.Errorf("preview: %q", got)
+	}
+	res, err = Bash{e}.Run(context.Background(), args(t, map[string]any{"command": "head -c 10000 /dev/zero | tr '\\0' x"}))
+	if err != nil || len(res.Output) > 4096 {
+		t.Errorf("bash output %d bytes, err %v", len(res.Output), err)
+	}
+	if l := (Env{}).limits(); l != DefaultLimits {
+		t.Errorf("zero limits became %+v", l)
 	}
 }

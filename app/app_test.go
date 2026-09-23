@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -335,5 +336,81 @@ func TestModelsAreCheckedAgainstTheProvidersList(t *testing.T) {
 	}
 	if err := a.Switch(ctx, "", "o4"); err != nil || a.Agent.Model != "o4" {
 		t.Fatalf("switch to a listed model: %v, model %q", err, a.Agent.Model)
+	}
+}
+
+// An approval shows an edit's diff unless settings.toml sets diff = false.
+func TestPreviewFollowsTheDiffSetting(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "f"), []byte("a\nb\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	call := llm.ToolCall{Name: "edit", Arguments: `{"path":"f","old_string":"b","new_string":"c"}`}
+	for setting, want := range map[string]bool{"": true, "[permissions]\ndiff = true\n": true, "[permissions]\ndiff = false\n": false} {
+		cfg := t.TempDir()
+		if err := os.WriteFile(filepath.Join(cfg, state.SettingsFile), []byte(setting), 0o600); err != nil {
+			t.Fatal(err)
+		}
+		a, err := New(Options{Provider: "openrouter", ConfigDir: cfg, Root: root})
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := a.Preview(call)
+		if want != strings.Contains(got, "-b\n+c") {
+			t.Errorf("setting %q: preview %q", setting, got)
+		}
+		if a.Preview(llm.ToolCall{Name: "bash", Arguments: `{"command":"ls"}`}) != "" {
+			t.Errorf("setting %q: bash has no preview", setting)
+		}
+	}
+}
+
+// settings.toml fills in what the flags leave unset, and the built-in defaults fill the rest.
+func TestSettingsTuneTheAgentAndTools(t *testing.T) {
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	t.Setenv("OPENROUTER_API_KEY", "k")
+	cfg := t.TempDir()
+	settings := "[agent]\nmax_tokens = 1000\nmax_turns = 5\ncontext = 50000\nstream_retries = 0\n" +
+		"[tools]\noutput_cap = 8192\nread_lines = 7\nbash_timeout = 30\n" +
+		"[prompt]\nagents_md = false\n[prices]\nfetch = false\n"
+	if err := os.WriteFile(filepath.Join(cfg, state.SettingsFile), []byte(settings), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "AGENTS.md"), []byte("house rules"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	a, err := New(Options{Provider: "openrouter", ConfigDir: cfg, Root: root, MaxTurns: 9})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ag := a.Agent
+	if ag.MaxTokens != 1000 || ag.MaxTurns != 9 || ag.Context != 50000 || ag.StreamRetries != 0 || ag.OutputCap != 8192 {
+		t.Errorf("agent %+v", ag.Config)
+	}
+	if strings.Contains(ag.System, "house rules") || a.fetchPrices {
+		t.Errorf("prompt or prices not turned off")
+	}
+	specs := fmt.Sprint(tool.Specs(ag.Tools))
+	if !strings.Contains(specs, "at most 7 lines") || !strings.Contains(specs, "Default 30, max 600") {
+		t.Errorf("tool limits missing from specs: %s", specs)
+	}
+
+	a, err = New(Options{Provider: "openrouter", ConfigDir: t.TempDir()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if a.Agent.MaxTokens != 32000 || a.Agent.StreamRetries != 2 || a.Agent.OutputCap != tool.OutputCap || !a.fetchPrices {
+		t.Errorf("defaults %+v", a.Agent.Config)
+	}
+
+	bad := t.TempDir()
+	if err := os.WriteFile(filepath.Join(bad, state.SettingsFile), []byte("[tools]\nbash_timeout = 900\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(Options{Provider: "openrouter", ConfigDir: bad}); err == nil || !strings.Contains(err.Error(), "bash_max_timeout") {
+		t.Errorf("a timeout over the default maximum: %v", err)
 	}
 }

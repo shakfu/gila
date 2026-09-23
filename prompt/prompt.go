@@ -27,9 +27,15 @@ const maxFile = 64 << 10
 // maxFrontmatter bounds a skill's frontmatter; the spec's fields total about 1.6 KB.
 const maxFrontmatter = 4096
 
+// Options leave parts out of the prompt. Both are sent with every request.
+type Options struct {
+	NoAgents bool // AGENTS.md files
+	NoSkills bool // skills' frontmatter
+}
+
 // Build returns the system prompt for a session rooted at dir. configDir holds the user's own
 // AGENTS.md and skills/; it may be empty.
-func Build(dir, configDir string) string {
+func Build(dir, configDir string, o Options) string {
 	var b strings.Builder
 	b.WriteString(base)
 	b.WriteString("\n\n# Environment\n\n")
@@ -38,13 +44,15 @@ func Build(dir, configDir string) string {
 	// The shell the bash tool runs, not $SHELL: the model writes syntax for this one.
 	b.WriteString("- Command shell: bash\n")
 
-	for _, path := range AgentsFiles(dir, configDir) {
-		if text := readTrimmed(path); text != "" {
-			fmt.Fprintf(&b, "\n# %s\n\n%s\n", path, text)
+	if !o.NoAgents {
+		for _, path := range AgentsFiles(dir, configDir) {
+			if text := readTrimmed(path); text != "" {
+				fmt.Fprintf(&b, "\n# %s\n\n%s\n", path, text)
+			}
 		}
 	}
 
-	if configDir != "" {
+	if configDir != "" && !o.NoSkills {
 		if skills := Skills(filepath.Join(configDir, "skills")); len(skills) > 0 {
 			fmt.Fprintf(&b, "\n# Skills\n\n%s\n", skillsIntro)
 			for _, s := range skills {

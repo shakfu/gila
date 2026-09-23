@@ -124,12 +124,31 @@ func ToolLine(st Styles, r agent.ToolResult, width int) string {
 	return line
 }
 
-// ApprovalLines prints the call awaiting approval in full, wrapped to width, so what the user
-// approves is exactly what runs. The live prompt below it has room for one line only.
-func ApprovalLines(st Styles, label string, width int) []string {
+// ApprovalLines prints the call awaiting approval in full, then its preview, wrapped to width,
+// so what the user approves is exactly what runs. The live prompt below has room for one line.
+func ApprovalLines(st Styles, label, preview string, width int) []string {
 	lines := []string{st.Warn.Bold(true).Render("approve:")}
 	for _, l := range strings.Split(visible(label), "\n") {
 		lines = append(lines, ansi.Hardwrap("  "+l, width, true))
+	}
+	if preview == "" {
+		return lines
+	}
+	for _, l := range strings.Split(strings.TrimSuffix(preview, "\n"), "\n") {
+		// A CRLF file would otherwise end every line with \x0d.
+		l = visible(strings.TrimSuffix(l, "\r"))
+		style := lipgloss.NewStyle()
+		switch {
+		case strings.HasPrefix(l, "+++"), strings.HasPrefix(l, "---"):
+			style = st.Dim
+		case strings.HasPrefix(l, "@@"):
+			style = st.Accent
+		case strings.HasPrefix(l, "+"):
+			style = st.OK
+		case strings.HasPrefix(l, "-"):
+			style = st.Error
+		}
+		lines = append(lines, ansi.Hardwrap(style.Render("  "+l), width, true))
 	}
 	return lines
 }

@@ -7,6 +7,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -73,6 +74,9 @@ type App struct {
 	mode     permission.Mode
 	ask      permission.AskFunc
 	rules    []permission.Rules
+	diff     bool
+	// fetchPrices is false when settings.toml turns off the price list.
+	fetchPrices bool
 
 	mu     sync.Mutex
 	prices *price.Catalog
@@ -131,21 +135,58 @@ func New(opts Options) (*App, error) {
 		return nil, err
 	}
 	rules := []permission.Rules{settings.Permissions.Rules, opts.Rules}
+	diff := state.Or(settings.Permissions.Diff, true)
+	// Flags win over settings.toml, which wins over the agent's defaults.
+	sa := settings.Agent
+	if opts.MaxTokens == 0 {
+		opts.MaxTokens = state.Or(sa.MaxTokens, 0)
+	}
+	if opts.MaxTurns == 0 {
+		opts.MaxTurns = state.Or(sa.MaxTurns, 0)
+	}
+	if opts.Context == 0 {
+		opts.Context = state.Or(sa.Context, 0)
+	}
+	// agent.Config reads 0 as the default and a negative number as none.
+	retries := state.Or(sa.StreamRetries, 0)
+	if sa.StreamRetries != nil && retries == 0 {
+		retries = -1
+	}
+	st, d := settings.Tools, tool.DefaultLimits
+	limits := tool.Limits{
+		OutputCap:      state.Or(st.OutputCap, d.OutputCap),
+		ReadLines:      state.Or(st.ReadLines, d.ReadLines),
+		ReadLineBytes:  state.Or(st.ReadLineBytes, d.ReadLineBytes),
+		BashTimeout:    state.Or(st.BashTimeout, d.BashTimeout),
+		BashMaxTimeout: state.Or(st.BashMaxTimeout, d.BashMaxTimeout),
+		DiffBytes:      state.Or(settings.Permissions.DiffMaxBytes, d.DiffBytes),
+	}
+	if limits.BashTimeout > limits.BashMaxTimeout {
+		return nil, fmt.Errorf("settings.toml: tools.bash_timeout %d exceeds tools.bash_max_timeout %d",
+			limits.BashTimeout, limits.BashMaxTimeout)
+	}
+	promptOpts := prompt.Options{
+		NoAgents: !state.Or(settings.Prompt.AgentsMD, true),
+		NoSkills: !state.Or(settings.Prompt.Skills, true),
+	}
+	fetchPrices := state.Or(settings.Prices.Fetch, true)
 	if opts.CacheDir == "" {
 		opts.CacheDir = state.CacheDir()
 	}
-	a := &App{opts: opts, State: state.Load(opts.StateDir), Jobs: &tool.Jobs{}, models: map[string][]llm.Model{}}
+	a := &App{opts: opts, State: state.Load(opts.StateDir), Jobs: &tool.Jobs{}, models: map[string][]llm.Model{}, diff: diff, fetchPrices: fetchPrices}
 	if opts.Effort == "" {
 		opts.Effort = a.State.Effort
 	}
 	cfg := agent.Config{
-		System:    prompt.Build(opts.Root, opts.ConfigDir),
-		Tools:     append(tool.Default(tool.Env{Root: opts.Root, Jobs: a.Jobs}), opts.Tools...),
-		MaxTokens: opts.MaxTokens,
-		MaxTurns:  opts.MaxTurns,
-		Effort:    opts.Effort,
-		Context:   opts.Context,
-		SessionID: newSessionID(),
+		System:        prompt.Build(opts.Root, opts.ConfigDir, promptOpts),
+		Tools:         append(tool.Default(tool.Env{Root: opts.Root, Jobs: a.Jobs, Limits: limits}), opts.Tools...),
+		MaxTokens:     opts.MaxTokens,
+		MaxTurns:      opts.MaxTurns,
+		StreamRetries: retries,
+		OutputCap:     limits.OutputCap,
+		Effort:        opts.Effort,
+		Context:       opts.Context,
+		SessionID:     newSessionID(),
 	}
 	if err := tool.Check(cfg.Tools); err != nil {
 		return nil, err
@@ -204,7 +245,7 @@ func (a *App) Prepare(ctx context.Context) ([]error, error) {
 	}
 	// The price list serves every cloud provider a session may switch to. A gateway need not bill
 	// at the vendor's rates, and a local server bills nothing.
-	if !e.Local() || a.opts.BaseURL == "" {
+	if a.fetchPrices && (!e.Local() || a.opts.BaseURL == "") {
 		cat, err := price.Load(ctx, a.opts.CacheDir, a.opts.Refresh)
 		if err != nil {
 			warns = append(warns, fmt.Errorf("price list: %w", err))
@@ -384,6 +425,23 @@ func (a *App) ConfigDir() string { return a.opts.ConfigDir }
 // quotes, rather than a --base-url gateway.
 func (a *App) usesVendorURL(id string) bool {
 	return id != a.opts.Provider || a.opts.BaseURL == ""
+}
+
+// Preview returns what an approval shows below the call: a diff when the tool can make one and
+// settings.toml does not set diff = false, else "". A failed preview shows nothing; the call fails the same way.
+func (a *App) Preview(call llm.ToolCall) string {
+	if !a.diff {
+		return ""
+	}
+	p, ok := tool.Find(a.Agent.Tools, call.Name).(tool.Previewer)
+	if !ok {
+		return ""
+	}
+	out, err := p.Preview(json.RawMessage(call.Arguments))
+	if err != nil {
+		return ""
+	}
+	return out
 }
 
 // SetEffort changes the reasoning effort and remembers it.

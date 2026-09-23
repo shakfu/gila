@@ -15,12 +15,6 @@ import (
 	"github.com/shakfu/gila/llm"
 )
 
-const (
-	readLines = 2000
-	// lineCap bounds one line; minified files otherwise fill the result with one line.
-	lineCap = 2000
-)
-
 type Read struct{ Env }
 
 type readArgs struct {
@@ -29,14 +23,15 @@ type readArgs struct {
 	Limit  int    `json:"limit"`
 }
 
-func (Read) Spec() llm.ToolSpec {
+func (r Read) Spec() llm.ToolSpec {
+	n := r.limits().ReadLines
 	return llm.ToolSpec{
 		Name:        "read",
-		Description: "Read a text file as numbered lines. Returns at most 2000 lines; use offset and limit for more.",
+		Description: fmt.Sprintf("Read a text file as numbered lines. Returns at most %d lines; use offset and limit for more.", n),
 		Schema: schema([]string{"path"}, map[string]any{
 			"path":   prop("string", "File path, absolute or relative to the working directory."),
 			"offset": prop("integer", "First line, 1-based. Default 1."),
-			"limit":  prop("integer", "Maximum lines. Default 2000."),
+			"limit":  prop("integer", fmt.Sprintf("Maximum lines. Default %d.", n)),
 		}),
 	}
 }
@@ -76,14 +71,16 @@ func (r Read) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
 	}
 
 	start := max(a.Offset, 1)
-	limit := readLines
+	lim := r.limits()
+	limit := lim.ReadLines
 	if a.Limit > 0 {
-		limit = min(a.Limit, readLines)
+		limit = min(a.Limit, lim.ReadLines)
 	}
 	var out strings.Builder
 	total, shown, cut := 0, 0, false
 	for {
-		line, long, err := readLine(br)
+		// ReadLineBytes bounds one line; minified files otherwise fill the result with one line.
+		line, long, err := readLine(br, lim.ReadLineBytes)
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -95,7 +92,7 @@ func (r Read) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
 			return Result{}, ctx.Err()
 		}
 		// Lines past the window are still counted, so the footer can say how many are left.
-		if total >= start && shown < limit && out.Len() < OutputCap {
+		if total >= start && shown < limit && out.Len() < lim.OutputCap {
 			fmt.Fprintf(&out, "%6d\t%s\n", total, line)
 			shown++
 			cut = cut || long
@@ -109,7 +106,7 @@ func (r Read) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
 		fmt.Fprintf(&out, "... %s not shown; continue with offset %d\n", plural(total-last, "line"), last+1)
 	}
 	if cut {
-		fmt.Fprintf(&out, "... long lines were cut at %d bytes\n", lineCap)
+		fmt.Fprintf(&out, "... long lines were cut at %d bytes\n", lim.ReadLineBytes)
 	}
 	return Result{Output: out.String(), Summary: plural(shown, "line")}, nil
 }
@@ -133,9 +130,9 @@ func openRegular(path, name string) (*os.File, os.FileInfo, error) {
 	return f, info, nil
 }
 
-// readLine returns one line without its newline or carriage return, cut at lineCap, and
+// readLine returns one line without its newline or carriage return, cut at lineCap bytes, and
 // whether it was cut. It never holds more than lineCap bytes of a line.
-func readLine(br *bufio.Reader) (string, bool, error) {
+func readLine(br *bufio.Reader, lineCap int) (string, bool, error) {
 	var buf []byte
 	long := false
 	for {

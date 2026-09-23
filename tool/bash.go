@@ -17,11 +17,6 @@ import (
 	"github.com/shakfu/gila/llm"
 )
 
-const (
-	bashTimeout    = 120
-	bashMaxTimeout = 600
-)
-
 // loginShell matches a command wrapped in a login shell, such as `bash -lc '...'`. GPT models
 // write this despite the tool description; a login profile can reorder PATH, so the command
 // would run different programs than the one logged.
@@ -34,14 +29,15 @@ type bashArgs struct {
 	Timeout int    `json:"timeout"`
 }
 
-func (Bash) Spec() llm.ToolSpec {
+func (b Bash) Spec() llm.ToolSpec {
+	l := b.limits()
 	return llm.ToolSpec{
 		Name: "bash",
 		Description: "Run a command with `bash -c` in the working directory and return its combined output " +
 			"and exit status. Do not wrap it in another shell. stdin is empty. Background jobs must redirect their output.",
 		Schema: schema([]string{"command"}, map[string]any{
 			"command": prop("string", "The command."),
-			"timeout": prop("integer", "Seconds before the command is killed. Default 120, max 600."),
+			"timeout": prop("integer", fmt.Sprintf("Seconds before the command is killed. Default %d, max %d.", l.BashTimeout, l.BashMaxTimeout)),
 		}),
 	}
 }
@@ -63,13 +59,14 @@ func (b Bash) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
 	if loginShell.MatchString(a.Command) {
 		return Result{}, fmt.Errorf("command already runs under bash -c; pass the inner command without a login shell")
 	}
-	timeout := bashTimeout
+	l := b.limits()
+	timeout := l.BashTimeout
 	if a.Timeout > 0 {
-		timeout = min(a.Timeout, bashMaxTimeout)
+		timeout = min(a.Timeout, l.BashMaxTimeout)
 	}
 
 	// Room for the notes appended below, so the agent's cap does not cut the output twice.
-	out := &capture{limit: OutputCap - 1024}
+	out := &capture{limit: l.OutputCap - 1024}
 	cmd := exec.Command("bash", "-c", a.Command)
 	cmd.Dir = b.Root
 	cmd.Stdout, cmd.Stderr = out, out

@@ -7,6 +7,8 @@ import (
 	"io"
 	"strings"
 
+	"github.com/aymanbagabas/go-udiff"
+
 	"github.com/shakfu/gila/llm"
 )
 
@@ -38,32 +40,61 @@ func (Edit) Label(raw json.RawMessage) string {
 	return "edit " + a.Path
 }
 
-// Run refuses an ambiguous match: an edit that hits the wrong occurrence is worse than a
-// failed one.
 func (e Edit) Run(_ context.Context, raw json.RawMessage) (Result, error) {
-	var a editArgs
-	if err := decode(raw, &a, "path", "old_string", "new_string"); err != nil {
+	c, err := e.apply(raw)
+	if err != nil {
 		return Result{}, err
 	}
+	if err := replace(c.path, []byte(c.after)); err != nil {
+		return Result{}, err
+	}
+	summary := "1 replacement"
+	if c.n > 1 {
+		summary = fmt.Sprintf("%d replacements", c.n)
+	}
+	return Result{Output: fmt.Sprintf("edited %s: %s", c.name, summary), Summary: summary}, nil
+}
+
+// Preview returns the unified diff Run would apply, computed the same way.
+func (e Edit) Preview(raw json.RawMessage) (string, error) {
+	c, err := e.apply(raw)
+	if err != nil {
+		return "", err
+	}
+	return udiff.Unified(c.name, c.name, c.before, c.after), nil
+}
+
+type change struct {
+	path, name, before, after string
+	n                         int
+}
+
+// apply works out an edit without writing it. It refuses an ambiguous match: an edit that
+// hits the wrong occurrence is worse than a failed one.
+func (e Edit) apply(raw json.RawMessage) (change, error) {
+	var a editArgs
+	if err := decode(raw, &a, "path", "old_string", "new_string"); err != nil {
+		return change{}, err
+	}
 	if a.Path == "" {
-		return Result{}, fmt.Errorf("path is required")
+		return change{}, fmt.Errorf("path is required")
 	}
 	// An empty pattern matches between every character.
 	if a.OldString == "" {
-		return Result{}, fmt.Errorf("old_string is empty; use write to create a file")
+		return change{}, fmt.Errorf("old_string is empty; use write to create a file")
 	}
 	if a.OldString == a.NewString {
-		return Result{}, fmt.Errorf("old_string and new_string are identical")
+		return change{}, fmt.Errorf("old_string and new_string are identical")
 	}
 	path := e.abs(a.Path)
 	f, _, err := openRegular(path, a.Path)
 	if err != nil {
-		return Result{}, err
+		return change{}, err
 	}
 	data, err := io.ReadAll(f)
 	f.Close()
 	if err != nil {
-		return Result{}, err
+		return change{}, err
 	}
 	text := string(data)
 	old, repl := a.OldString, a.NewString
@@ -76,21 +107,15 @@ func (e Edit) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 	n := strings.Count(text, old)
 	switch {
 	case n == 0:
-		return Result{}, fmt.Errorf("old_string not found in %s", a.Path)
+		return change{}, fmt.Errorf("old_string not found in %s", a.Path)
 	case n > 1 && !a.ReplaceAll:
-		return Result{}, fmt.Errorf("old_string occurs %d times in %s; add context or set replace_all", n, a.Path)
+		return change{}, fmt.Errorf("old_string occurs %d times in %s; add context or set replace_all", n, a.Path)
 	}
+	c := change{path: path, name: a.Path, before: text, n: n}
 	if a.ReplaceAll {
-		text = strings.ReplaceAll(text, old, repl)
+		c.after = strings.ReplaceAll(text, old, repl)
 	} else {
-		text = strings.Replace(text, old, repl, 1)
+		c.after = strings.Replace(text, old, repl, 1)
 	}
-	if err := replace(path, []byte(text)); err != nil {
-		return Result{}, err
-	}
-	summary := "1 replacement"
-	if n > 1 {
-		summary = fmt.Sprintf("%d replacements", n)
-	}
-	return Result{Output: fmt.Sprintf("edited %s: %s", a.Path, summary), Summary: summary}, nil
+	return c, nil
 }
