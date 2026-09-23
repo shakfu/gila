@@ -1,0 +1,166 @@
+// Package llm holds the provider-independent conversation model and the Provider interface.
+//
+// History is neutral, but each assistant message also keeps the provider's own payload in
+// Native: Anthropic thinking blocks with signatures, OpenAI Responses reasoning items with
+// encrypted content, OpenRouter reasoning_details. A provider replays Native when it produced
+// it for the same model, so nothing is lost in translation; after a switch it rebuilds the
+// message from the neutral fields and the reasoning is dropped.
+package llm
+
+import (
+	"context"
+	"errors"
+)
+
+type Role string
+
+const (
+	User      Role = "user"
+	Assistant Role = "assistant"
+	// Tool carries every result for one assistant message. Anthropic requires them in a single
+	// user message; splitting them teaches the model to stop calling tools in parallel.
+	Tool Role = "tool"
+)
+
+type ToolCall struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	// Arguments is the raw JSON object the model streamed.
+	Arguments string `json:"arguments"`
+}
+
+type ToolResult struct {
+	CallID  string `json:"call_id"`
+	Content string `json:"content"`
+	IsError bool   `json:"is_error,omitempty"`
+}
+
+type Message struct {
+	Role    Role         `json:"role"`
+	Text    string       `json:"text,omitempty"`
+	Calls   []ToolCall   `json:"calls,omitempty"`
+	Results []ToolResult `json:"results,omitempty"`
+	Native  *Native      `json:"-"`
+}
+
+// Native is a provider's own representation of an assistant message.
+type Native struct {
+	Provider string
+	Model    string
+	Data     any
+}
+
+// NativeFor returns the payload when it was produced by this provider and model.
+func (m Message) NativeFor(provider, model string) (any, bool) {
+	if m.Native == nil || m.Native.Provider != provider || m.Native.Model != model {
+		return nil, false
+	}
+	return m.Native.Data, true
+}
+
+type ToolSpec struct {
+	Name        string
+	Description string
+	// Schema is a JSON Schema object with "properties" and "required".
+	Schema map[string]any
+}
+
+// Properties and Required split Schema for SDKs that take them separately.
+func (t ToolSpec) Properties() map[string]any {
+	p, _ := t.Schema["properties"].(map[string]any)
+	return p
+}
+
+func (t ToolSpec) Required() []string {
+	r, _ := t.Schema["required"].([]string)
+	return r
+}
+
+type Request struct {
+	Model    string
+	System   string
+	Messages []Message
+	Tools    []ToolSpec
+	// MaxTokens caps one response.
+	MaxTokens int64
+	// Effort is "", "low", "medium", "high", "xhigh" or "max". Empty leaves the model default.
+	Effort string
+	// SessionID keys prompt caching and sticky routing where the provider supports it.
+	SessionID string
+}
+
+type Usage struct {
+	// Input counts every prompt token, cached or not.
+	Input      int64 `json:"input_tokens"`
+	Output     int64 `json:"output_tokens"`
+	CacheRead  int64 `json:"cache_read_tokens"`
+	CacheWrite int64 `json:"cache_write_tokens"`
+	// Cost is USD, nil when unknown. Estimated is set when it comes from a price list.
+	Cost      *float64 `json:"cost"`
+	Estimated bool     `json:"cost_estimated"`
+}
+
+// Add accumulates u into s. A cost stays nil until some part reports one.
+func (s *Usage) Add(u Usage) {
+	s.Input += u.Input
+	s.Output += u.Output
+	s.CacheRead += u.CacheRead
+	s.CacheWrite += u.CacheWrite
+	if u.Cost != nil {
+		c := *u.Cost
+		if s.Cost != nil {
+			c += *s.Cost
+		}
+		s.Cost = &c
+	}
+	s.Estimated = s.Estimated || u.Estimated
+}
+
+type StopReason string
+
+const (
+	StopEnd       StopReason = "end"
+	StopToolUse   StopReason = "tool_use"
+	StopMaxTokens StopReason = "max_tokens"
+	StopRefusal   StopReason = "refusal"
+)
+
+type Response struct {
+	Message Message
+	Usage   Usage
+	Stop    StopReason
+}
+
+type EventKind int
+
+const (
+	TextDelta EventKind = iota
+	ReasoningDelta
+	// ToolStart fires when the model opens a call, before its arguments stream.
+	ToolStart
+)
+
+type Event struct {
+	Kind EventKind
+	Text string
+}
+
+type Model struct {
+	ID      string
+	Context int64
+}
+
+type Provider interface {
+	// Name is the registry id, such as "anthropic".
+	Name() string
+	// Stream sends one request and reports deltas to emit as they arrive. The returned
+	// message is complete only when err is nil.
+	Stream(ctx context.Context, req Request, emit func(Event)) (Response, error)
+	Models(ctx context.Context) ([]Model, error)
+}
+
+// ErrContext means the request exceeds the model's context window.
+var ErrContext = errors.New("request exceeds the model's context window")
+
+// Float returns a pointer to f.
+func Float(f float64) *float64 { return &f }

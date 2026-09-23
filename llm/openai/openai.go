@@ -1,0 +1,185 @@
+// Package openai speaks the Responses API through openai-go.
+//
+// Requests are stateless (store=false). Reasoning survives the tool calls of a turn only as
+// encrypted content the client replays, so it is requested with every call and kept in Native.
+package openai
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+
+	sdk "github.com/openai/openai-go/v3"
+	"github.com/openai/openai-go/v3/option"
+	"github.com/openai/openai-go/v3/responses"
+	"github.com/openai/openai-go/v3/shared"
+
+	"github.com/shakfu/gila/llm"
+)
+
+type Provider struct {
+	name   string
+	client sdk.Client
+}
+
+func New(name, key, baseURL string, opts ...option.RequestOption) *Provider {
+	if key != "" {
+		opts = append(opts, option.WithAPIKey(key))
+	}
+	if baseURL != "" {
+		opts = append(opts, option.WithBaseURL(baseURL))
+	}
+	opts = append(opts, option.WithMaxRetries(4))
+	return &Provider{name: name, client: sdk.NewClient(opts...)}
+}
+
+func (p *Provider) Name() string { return p.name }
+
+func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Event)) (llm.Response, error) {
+	params, err := p.params(req)
+	if err != nil {
+		return llm.Response{}, err
+	}
+	stream := p.client.Responses.NewStreaming(ctx, params)
+	defer stream.Close()
+
+	var final *responses.Response
+	for stream.Next() {
+		ev := stream.Current()
+		switch ev.Type {
+		case "response.output_text.delta":
+			emit(llm.Event{Kind: llm.TextDelta, Text: ev.Delta})
+		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
+			emit(llm.Event{Kind: llm.ReasoningDelta, Text: ev.Delta})
+		case "response.output_item.added":
+			if ev.Item.Type == "function_call" {
+				emit(llm.Event{Kind: llm.ToolStart, Text: ev.Item.Name})
+			}
+		case "response.completed", "response.incomplete":
+			r := ev.Response
+			final = &r
+		case "response.failed":
+			return llm.Response{}, fmt.Errorf("response failed: %s", ev.Response.Error.Message)
+		case "error":
+			return llm.Response{}, fmt.Errorf("stream error: %s", ev.Message)
+		}
+	}
+	if err := stream.Err(); err != nil {
+		return llm.Response{}, wrap(err)
+	}
+	if final == nil {
+		return llm.Response{}, errors.New("stream ended without a completed response")
+	}
+	return p.response(req.Model, final)
+}
+
+func (p *Provider) params(req llm.Request) (responses.ResponseNewParams, error) {
+	input, err := p.input(req)
+	if err != nil {
+		return responses.ResponseNewParams{}, err
+	}
+	params := responses.ResponseNewParams{
+		Model:           shared.ResponsesModel(req.Model),
+		Input:           responses.ResponseNewParamsInputUnion{OfInputItemList: input},
+		Store:           sdk.Bool(false),
+		MaxOutputTokens: sdk.Int(req.MaxTokens),
+		Include:         []responses.ResponseIncludable{responses.ResponseIncludableReasoningEncryptedContent},
+	}
+	if req.System != "" {
+		params.Instructions = sdk.String(req.System)
+	}
+	if req.SessionID != "" {
+		params.PromptCacheKey = sdk.String(req.SessionID)
+	}
+	if req.Effort != "" {
+		params.Reasoning = shared.ReasoningParam{Effort: shared.ReasoningEffort(req.Effort)}
+	}
+	for _, t := range req.Tools {
+		fn := responses.ToolParamOfFunction(t.Name, t.Schema, false)
+		fn.OfFunction.Description = sdk.String(t.Description)
+		params.Tools = append(params.Tools, fn)
+	}
+	return params, nil
+}
+
+func (p *Provider) input(req llm.Request) (responses.ResponseInputParam, error) {
+	var out responses.ResponseInputParam
+	for _, m := range req.Messages {
+		switch m.Role {
+		case llm.User:
+			out = append(out, responses.ResponseInputItemParamOfMessage(m.Text, responses.EasyInputMessageRoleUser))
+		case llm.Tool:
+			for _, r := range m.Results {
+				out = append(out, responses.ResponseInputItemParamOfFunctionCallOutput(r.CallID, r.Content))
+			}
+		case llm.Assistant:
+			if native, ok := m.NativeFor(p.name, req.Model); ok {
+				out = append(out, native.(responses.ResponseInputParam)...)
+				continue
+			}
+			if m.Text != "" {
+				out = append(out, responses.ResponseInputItemParamOfMessage(m.Text, responses.EasyInputMessageRoleAssistant))
+			}
+			for _, c := range m.Calls {
+				out = append(out, responses.ResponseInputItemParamOfFunctionCall(c.Arguments, c.ID, c.Name))
+			}
+		}
+	}
+	return out, nil
+}
+
+func (p *Provider) response(model string, r *responses.Response) (llm.Response, error) {
+	msg := llm.Message{Role: llm.Assistant, Text: r.OutputText()}
+	var native responses.ResponseInputParam
+	for _, item := range r.Output {
+		// Output items replay as input items of the same shape: reasoning with its encrypted
+		// content, messages, and function calls.
+		var in responses.ResponseInputItemUnionParam
+		if err := json.Unmarshal([]byte(item.RawJSON()), &in); err != nil {
+			return llm.Response{}, fmt.Errorf("replaying %s item: %w", item.Type, err)
+		}
+		native = append(native, in)
+		if item.Type == "function_call" {
+			msg.Calls = append(msg.Calls, llm.ToolCall{ID: item.CallID, Name: item.Name, Arguments: item.Arguments.OfString})
+		}
+	}
+	msg.Native = &llm.Native{Provider: p.name, Model: model, Data: native}
+
+	u := r.Usage
+	stop := llm.StopEnd
+	// A cut-off response can carry a call with truncated arguments, so max tokens wins.
+	switch {
+	case r.Status == responses.ResponseStatusIncomplete && r.IncompleteDetails.Reason == "max_output_tokens":
+		stop = llm.StopMaxTokens
+	case len(msg.Calls) > 0:
+		stop = llm.StopToolUse
+	}
+	return llm.Response{
+		Message: msg,
+		Usage: llm.Usage{
+			Input:     u.InputTokens,
+			Output:    u.OutputTokens,
+			CacheRead: u.InputTokensDetails.CachedTokens,
+		},
+		Stop: stop,
+	}, nil
+}
+
+func (p *Provider) Models(ctx context.Context) ([]llm.Model, error) {
+	var out []llm.Model
+	iter := p.client.Models.ListAutoPaging(ctx)
+	for iter.Next() {
+		out = append(out, llm.Model{ID: iter.Current().ID})
+	}
+	return out, iter.Err()
+}
+
+func wrap(err error) error {
+	var apierr *sdk.Error
+	if errors.As(err, &apierr) && strings.Contains(apierr.Error(), "context_length_exceeded") {
+		return errors.Join(llm.ErrContext, err)
+	}
+	return err
+}

@@ -1,0 +1,77 @@
+package compat
+
+import (
+	"context"
+	"strings"
+	"testing"
+
+	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gila/llm/llmtest"
+)
+
+var turn = llmtest.SSE(
+	"", `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"local","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"think"}}]}`,
+	"", `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"local","choices":[{"index":0,"delta":{"content":"Hi"}}]}`,
+	"", `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"local","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"call_a","type":"function","function":{"name":"read","arguments":"{\"pa"}}]}}]}`,
+	"", `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"local","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"th\":\"a\"}"}}]}}]}`,
+	"", `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"local","choices":[{"index":0,"delta":{},"finish_reason":"tool_calls"}]}`,
+	"", `{"id":"c1","object":"chat.completion.chunk","created":1,"model":"local","choices":[],"usage":{"prompt_tokens":50,"completion_tokens":7,"total_tokens":57}}`,
+	"", `[DONE]`,
+)
+
+func TestStreamAssemblesChunksAndReasoning(t *testing.T) {
+	srv := llmtest.New(t, turn)
+	p := New("llamacpp", "", srv.URL)
+	var reasoning strings.Builder
+	req := llm.Request{Model: "local", System: "sys", MaxTokens: 100, Messages: []llm.Message{
+		{Role: llm.User, Text: "hi"},
+		{Role: llm.Assistant, Text: "earlier", Calls: []llm.ToolCall{{ID: "c0", Name: "bash", Arguments: `{"command":"ls"}`}}},
+		{Role: llm.Tool, Results: []llm.ToolResult{{CallID: "c0", Content: "a.go"}}},
+	}}
+	resp, err := p.Stream(context.Background(), req, func(e llm.Event) {
+		if e.Kind == llm.ReasoningDelta {
+			reasoning.WriteString(e.Text)
+		}
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if reasoning.String() != "think" {
+		t.Fatalf("reasoning %q", reasoning.String())
+	}
+	m := resp.Message
+	if m.Text != "Hi" || len(m.Calls) != 1 || m.Calls[0].Arguments != `{"path":"a"}` || resp.Stop != llm.StopToolUse {
+		t.Fatalf("message %+v stop %q", m, resp.Stop)
+	}
+	if resp.Usage.Input != 50 || resp.Usage.Output != 7 {
+		t.Fatalf("usage %+v", resp.Usage)
+	}
+	body := srv.Bodies[0]
+	if llmtest.Get(body, "messages", 0, "role") != "system" ||
+		llmtest.Get(body, "messages", 2, "tool_calls", 0, "function", "name") != "bash" ||
+		llmtest.Get(body, "messages", 3, "role") != "tool" ||
+		llmtest.Get(body, "stream_options", "include_usage") != true {
+		t.Fatalf("body %v", body)
+	}
+}
+
+func TestAStreamWithoutAFinishReasonIsAnError(t *testing.T) {
+	srv := llmtest.New(t, llmtest.SSE("", `{"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"content":"x"}}]}`, "", "[DONE]"))
+	_, err := New("llamacpp", "", srv.URL).Stream(context.Background(), llm.Request{Model: "m", Messages: []llm.Message{{Role: llm.User, Text: "hi"}}}, func(llm.Event) {})
+	if err == nil {
+		t.Fatal("a cut stream was taken as complete")
+	}
+}
+
+// A response cut off at the length limit may carry truncated arguments; the stop reason must
+// say so, or the agent runs the call.
+func TestLengthWinsOverToolCalls(t *testing.T) {
+	srv := llmtest.New(t, llmtest.SSE(
+		"", `{"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"write","arguments":"{\"pa"}}]}}]}`,
+		"", `{"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{},"finish_reason":"length"}]}`,
+		"", "[DONE]"))
+	resp, err := New("llamacpp", "", srv.URL).Stream(context.Background(), llm.Request{Model: "m", Messages: []llm.Message{{Role: llm.User, Text: "hi"}}}, func(llm.Event) {})
+	if err != nil || resp.Stop != llm.StopMaxTokens {
+		t.Fatalf("stop %q err %v", resp.Stop, err)
+	}
+}
