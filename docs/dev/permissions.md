@@ -32,8 +32,11 @@ A mode answers "does this call need a human?". A sandbox answers "what can a run
 Recommendation: add the sandbox as a separate setting, not a fifth mode.
 
 - `auto` + sandbox is `proceed-in-sandbox`.
+
 - `ask` + sandbox confines what the user approves. That matters because the user approves a label such as `$ make test`, not what `make test` runs.
+
 - `all` + sandbox is the unattended case: nothing asks, writes stay under the root. This is minima's only mode ([README](https://github.com/shakfu/minima/blob/b276433/README.md)).
+
 - `read-only` refuses `bash` either way; see open question 3.
 
 Alternative framing: a sandbox per mode, where `auto` always confines when the kernel supports it. Rejected: it either fails to start on older kernels (below) or falls back silently, and a silent fallback leaves the user believing a boundary exists.
@@ -70,8 +73,11 @@ The macOS backend ports directly. The Linux one does not, since Go lacks `pre_ex
 The intersection of what Landlock and Seatbelt both enforce:
 
 - reads allowed everywhere;
+
 - writes allowed under the root, `$TMPDIR`, `/dev/null` and the toolchain caches;
+
 - `writable` entries from `settings.toml` add directories;
+
 - inherited by every descendant, not liftable by the process, and checked by the kernel at `open`, so no time-of-check-to-time-of-use window.
 
 Toolchain caches are required, not optional. minima measured an offline `cargo build` opening files under `$CARGO_HOME` with `O_RDWR|O_CREAT` on every run. The full list is in minima's CHANGELOG, `--sandbox` entry.
@@ -120,7 +126,9 @@ This is what "risky commands prompt" needs to mean. Classifying a command string
 Recommendation: run every command confined. When one needs more, the model sets a `bash` argument such as `unsandboxed: true`, and that call asks.
 
 - It asks in every mode, `all` included. Otherwise `all` + sandbox equals `all`.
+
 - It is refused where no one can ask, as under `--json`, and in `read-only`.
+
 - A confined command that fails with `Operation not permitted` gets a note naming the sandbox and the argument. minima found models otherwise retry or reach for `sudo`.
 
 The argument should be in the schema whether or not the sandbox is on. `/permissions` can change the setting mid-session, and changing the tool schema would invalidate the prompt cache.
@@ -151,6 +159,9 @@ Estimated, not measured. minima estimated 200-260 lines for both backends in Rus
 ## Open questions
 
 1. Is Antigravity's `strict` only `request-review` without allowlists, or does it show diffs? The excerpt does not say.
+
 2. Should `auto` suggest `--sandbox` when the kernel supports it, for example in the startup banner?
+
 3. Could `read-only` + sandbox allow `bash` with no writable paths besides `$TMPDIR`? Only if network is also denied, since `read-only` refuses network tools to stop exfiltration. Most builds and tests would still fail on their cache writes.
+
 4. Should the escape argument's approval be remembered per command prefix, as `a` remembers a tool for the session?

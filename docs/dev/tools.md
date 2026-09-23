@@ -5,8 +5,11 @@ What makes a tool built in, how gila reaches programs in the environment such as
 ## Terms
 
 - **Built-in tool**: a `tool.Tool` compiled into gila and sent to the model with every request. Today there are four: `read`, `write`, `edit`, `bash`.
+
 - **Custom tool**: a `tool.Tool` an embedding app adds through `app.Options.Tools`, usually built with `tool.New`. Go code, not configuration.
+
 - **Environment program**: anything on `PATH`. The model reaches it only through `bash`.
+
 - **Model-facing** vs **user-facing**: a model-facing tool is one the model calls. A user-facing integration is one the human uses, such as a pager for approval diffs (delta, hunk) or a fuzzy file picker (fzf). They are separate questions; this document is about the first, except where noted.
 
 ## What a tool declaration gives gila
@@ -34,6 +37,7 @@ In two self-reviews of this repository (2026-09-23), neither OpenAI model called
 Consequences:
 
 - **Permissions.** Each of those reads would prompt in `ask` mode, and be refused in `read-only` mode, where `read` would have run.
+
 - **Tokens.** `read` stops at `read_lines`. `cat` returns the file up to `output_cap`, 32 KiB (about 8k tokens), and that result is sent again with every later request.
 
 Two runs is a small sample. The explanation usually given is that OpenAI trains its models on `shell` plus `apply_patch`. That is a claim from third-party research, not checked here. So a new declared tool is only useful if models call it. Measure before adding one; see "Measuring" below.
@@ -60,14 +64,19 @@ The token cost of a declaration is small. gila's four definitions total 1,797 by
 gila can already use any program on `PATH`:
 
 1. **The model runs it through `bash`.** `rg`, `quarto render`, `fzf --filter`: whatever the shell finds.
+
 2. **AGENTS.md or a skill tells the model it exists.** A `~/.config/gila/skills/quarto/SKILL.md` saying when and how to run `quarto render` is enough for the model to use it. A skill costs only its frontmatter on each request; the body is read when needed.
+
 3. **The `commands` allowlist stops the prompts in `ask` mode.** `commands = ["rg", "quarto render"]`.
 
 Limits of this path:
 
 - `read-only` mode refuses all of it, including `rg`, which only reads.
+
 - The allowlist is a prefix match on the command string. `rg --pre=sh pattern` matches `rg`, and `--pre` runs a program for each file. The allowlist trusts every flag.
+
 - Output is whatever the program prints, capped at `output_cap`.
+
 - The approval shows a shell string, not a structured call.
 
 Embedding apps have a second path: `tool.New` with a `Def` that declares `ReadOnly`, `Paths` or `Hosts`. That needs Go code.
@@ -111,10 +120,15 @@ path = { type = "string", description = "File or directory.", default = ".", pat
 Rules the design needs:
 
 - **No shell.** gila runs `argv` with `exec`, not `bash -c`. A placeholder fills one whole argv element and cannot split into several, so `;`, `$()` and globs in a value are inert.
+
 - **No injected flags.** A value starting with `-` could still set a flag: a `pattern` of `--pre=sh` would make `rg` run programs. Two defences: put `--` before the placeholders, as above, and reject values that start with `-` unless the argument sets `allow_dash = true`. `--` alone is not enough, because not every program honours it.
+
 - **Declared effect is trusted.** `read_only = true` is the user's claim, like an entry in `secrets`. The command's argv is fixed, so the claim covers every call. An argument marked `path = true` feeds `tool.Paths`, so the secret and protected-path checks apply to it.
+
 - **Exit codes.** `ok_exit` lists codes that are not failures.
+
 - **Limits.** Output goes through `output_cap`, and time through `bash_timeout` or a per-tool `timeout`.
+
 - **Names.** `tool.Check` already rejects duplicate and invalid names. A declared tool cannot replace a built-in one.
 
 Cost: one definition per tool on every request, about 100-150 cached tokens each. Unknown: whether models call `rg` when `bash` can run it too. See "Evidence" above.
@@ -124,7 +138,9 @@ Cost: one definition per tool on every request, about 100-150 cached tokens each
 MCP (Model Context Protocol) lets gila start or connect to servers that each expose tools. It gives access to many existing servers without writing a declaration per tool.
 
 - **Tokens.** Servers often expose many tools with long descriptions. All are sent with every request.
+
 - **Effect.** MCP tool annotations such as `readOnlyHint` come from the server, which gila cannot verify. Each MCP tool would have to be treated as undeclared: it asks in `auto` mode and is refused in `read-only` mode, whatever it claims.
+
 - **Complexity.** Server lifecycle, a transport, schema translation for three providers, and a dependency.
 
 ### D. Built-in Go implementations (`grep`, `glob`)
@@ -136,8 +152,11 @@ These have no dependency on `PATH`, give the same output on every machine, and a
 Make a tool built in when most of these hold:
 
 1. It is needed on every machine, whatever is on `PATH`.
+
 2. The permission modes need its declared effect: it replaces `bash` calls that would otherwise prompt or be refused.
+
 3. Its output shape affects token use enough to control.
+
 4. Models are trained to call it, so they will use it.
 
 `read`, `write` and `edit` meet 1-3. `bash` meets 1 and 4. A Go `grep` or `glob` meets 1-3. Whether it meets 4 is unmeasured. Everything else belongs in option A or B.
@@ -145,10 +164,15 @@ Make a tool built in when most of these hold:
 ## Recommendation
 
 1. **Measure first.** Count tool calls per model from `--json` output over a few real tasks: how often reading and searching go through `bash`, and which programs.
+
 2. **Document option A now.** It works today at no cost. Add a "using programs on PATH" section to the README with a skill example and the `commands` allowlist.
+
 3. **Build option B if the measurements show `bash` reads and searches that would prompt or be refused.** It reuses `tool.New`, needs no new dependency, and fixes both `read-only` refusing `rg` and the allowlist trusting every flag.
+
 4. **Defer option C** until a server is needed that option B cannot cover. If built, treat every MCP tool as undeclared.
+
 5. **After the tool set is settled, A/B test output filtering.** [rtk](https://github.com/rtk-ai/rtk) compresses `bash` output per command, such as test failures only or one-line `git push`. Run the same tasks with and without it and compare input tokens, turns, failed `edit` calls and task success. Its filtering loses information, and `edit` needs exact text, so fewer tokens can still mean more round-trips.
+
 6. **Treat user-facing integrations separately.** The diff pager in `TODO.md` and an fzf file picker fit there.
 
 An alternative to B is teaching the permission layer about read-only programs: classify `rg PATTERN PATH` or `sed -n` inside `bash` as read-only. It needs no new tools, and it would catch what the GPT models did. It needs a per-program list of flags that write or execute (`sed -i`, `rg --pre`, `find -exec`), which is a larger and riskier surface than B's fixed argv.
@@ -173,11 +197,15 @@ Each row is a tool, with `bash` split by the programs it ran: `bash cat` and `ba
 Limits:
 
 - Only `-p --json` runs produce records. The REPL writes none, so the two self-reviews above were counted by hand.
+
 - Programs are found by splitting the command at unquoted `;`, `&`, `|`, parentheses and newlines, skipping heredoc bodies, and taking each part's first word after keywords, assignments, redirections and wrappers such as `env`. So a loop counts its body: `for f in *.go; do echo $f; sed -n 1,80p $f; done` counts as `bash sed`. Builtins such as `echo` and `cd` count only when nothing else runs. This is not a shell parser: `eval`, `bash -c '...'` and `xargs` count under their own names, not the programs they run.
+
 - Bytes are not tokens. At about 4 bytes per token the ratio holds for English and code, but not for every tokenizer.
 
 ## Open questions
 
 1. Should option B allow `bash -c` templates, for pipelines such as `rg --files | fzf --filter={q}`? That brings back shell quoting, which option B exists to avoid.
+
 2. Should a declared tool take `paths` from its output as well as its arguments? `quarto render` writes files the arguments do not name, so `auto` cannot check them.
+
 3. Should gila ship example declarations (`rg`, `fd`) in the README, or only the mechanism?

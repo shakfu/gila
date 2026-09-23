@@ -62,9 +62,13 @@ Flags:
 Selection:
 
 - No `-P`: the provider last used, while it can still run (a cloud provider needs its key set); then the first of anthropic, openai, openrouter whose key is set. A local server, `compat` included, is reused only after you named it with `-P` or `/provider`; the fallback never picks one, so an endpoint you never chose is never tried silently.
+
 - No `-m`: the model last used with that provider, then the default above.
+
 - `-m provider:model` names both, for example `-m openrouter:openai/gpt-5.5` or `-m ollama:qwen3:8b`.
+
 - A model the provider does not list is refused, at startup and on `/model`, with a hint: `openrouter:ID` for an id that belongs to OpenRouter, or the listed ids it resembles. A provider that lists no models is not checked. OpenAI's list leaves out models that cannot chat, such as embeddings, speech and image models.
+
 - Provider and model are remembered only after a turn streams, so a mistyped model is not reused.
 
 `compat` covers any other OpenAI-compatible Chat Completions server: LM Studio, vLLM, llama-swap, a machine on the LAN, or a hosted endpoint. For example, `gila -P compat --base-url http://localhost:1234/v1`. Like the local presets, it is never chosen automatically and gets no cost estimate.
@@ -74,21 +78,37 @@ Start llama-server with `--jinja` so tool calls work.
 ## Features
 
 - **Tools:** 4. `read` returns numbered lines, 2000 at most, with `offset` and `limit`, and summarises a binary file instead of dumping it. `write` creates or replaces a file. `edit` replaces one exact string, or every one with `replace_all`. `bash` runs `bash -c` in its own process group, 120 s by default and 600 s at most. A result over 32 KiB keeps its first fifth and last four fifths.
+
 - **REPL:** output goes to the terminal's scrollback. An input box and a status bar stay pinned below it. The bar shows the working directory, or a spinner, elapsed time and the current step, then the model, effort, context used and session cost. Assistant text streams as styled markdown, one line at a time. Each tool call gets one line, such as `[tool] read main.go:1-80 -> 80 lines` or `[tool] $ go test -> exit 1: FAIL`. Each prompt ends with a usage line: context, tokens in with the cached share, tokens out, cost.
+
 - **Headless:** `-p` streams the answer to stdout and everything else to stderr. `--json` prints one record per line: `start`, `turn`, `tool_call`, `tool_result` and `retry`, then a final `result` with `outcome`, `text`, `error`, `turns`, `usage` and `context_used`. Exit status 0 when complete, 1 on error, 2 on a usage error, 130 when cancelled.
+
 - **Network:** a response streams with no overall timeout, so a long answer is never cut off; Esc or Ctrl-C ends a stalled one. When a provider's SDK retries a request, the REPL's status bar and a `[retry] 1 after 503 Service Unavailable` line say why, as do `-p`'s stderr and a `retry` record in `--json`. Anthropic and OpenAI retry up to 4 times, the local providers twice, OpenRouter for up to a minute. A response cut off mid-stream is sent again by gila itself, up to twice in a row; the cut response never enters the history. `GILA_LOG=FILE` records each request's endpoint and status and the raw response stream, never request bodies or headers.
+
 - **Cost:** OpenRouter reports each request's cost. For `anthropic` and `openai`, gila estimates it from OpenRouter's public price list, marked `~`. It prices cached input at the cache rate and applies long-prompt tiers. The list is fetched without a key, at most once a day. `--base-url` turns estimates off, since a gateway need not bill at the vendor's rates. Local servers report no cost.
+
 - **Token use:**
+
   - Anthropic requests carry a cache breakpoint on the system prompt and an automatic one on the last block.
+
   - OpenAI and OpenRouter requests carry a `prompt_cache_key`. OpenRouter also carries a `session_id` for sticky routing and `cache_control` for Claude models.
+
   - The system prompt is built once per session and never changes, so the cached prefix holds.
+
 - **Reasoning:**
+
   - Each assistant message keeps the provider's own payload. That covers Anthropic thinking blocks with signatures, OpenAI encrypted reasoning, and OpenRouter `reasoning_details`.
+
   - The payload replays unchanged to the model that produced it. After a model or provider switch, the message is sent as text and tool calls.
+
   - `/thinking` shows reasoning as it streams.
+
 - **Instructions:** `AGENTS.md` from the config directory, then every `AGENTS.md` from the repository root down to the working directory, are appended to the system prompt. The nearest comes last. Outside a repository only the working directory's file is read.
+
 - **Skills:** `skills/<name>/SKILL.md` in the config directory, by the [Agent Skills](https://agentskills.io/specification) convention. The prompt lists each skill's path and frontmatter; the model reads the file when a task matches.
+
 - **Cancellation:** Esc or Ctrl-C cancels a turn, including a pending request. Every tool call still gets a result, so the conversation stays valid.
+
 - **Context:** the window comes from `--context`, the provider's model list, llama-server's `n_ctx`, or OpenRouter's list. A request is refused once the last one filled 95% of it; `/clear` starts over. There is no compaction.
 
 ### Permissions
@@ -109,9 +129,13 @@ The REPL asks inline: `y` allows the call, `n` or Esc declines it, `a` allows th
 Decisions follow what each tool declares, not its name, so a custom tool called `read` gains nothing:
 
 - **Read-only:** the tool only reads local files, with no writes, processes or network requests. `read` is one.
+
 - **Paths:** the files a call touches. `read`, `write` and `edit` declare them. Writes are checked against the working directory and the protected paths; reads and writes against the secrets.
+
 - **Hosts:** the hosts a call contacts. A tool that declares them is a network tool and never read-only, since a request can carry out whatever the model has read.
+
 - `bash` is recognised by its type.
+
 - A tool that declares nothing is treated as modifying anything.
 
 #### Secret and protected paths
@@ -126,8 +150,11 @@ Secrets ask before any read or write. Protected paths ask before a write. Built-
 Only names that nearly always hold credentials are built in, since a false positive could never be switched off. Noisier ones, such as `*.pem` (which also matches public certificates), `.npmrc` or `*.tfvars`, belong in `settings.toml`.
 
 - A pattern without `/` matches a file's name for secrets, and any path component for protected.
+
 - A pattern with `/` matches the path relative to the working directory and everything under it: `config/prod` covers `config/prod/db.yaml`.
+
 - A leading `!` exempts what an earlier pattern in the same source matched; the last match wins, as in `.gitignore`. It cannot exempt a built-in pattern, so `"!.git"` has no effect, nor a pattern an embedding app adds.
+
 - Paths are checked as written and after following symlinks, so a link to `.env` counts as `.env`.
 
 #### Allowlists
@@ -135,7 +162,9 @@ Only names that nearly always hold credentials are built in, since a false posit
 `commands` allowlists `bash` in `ask` mode, where every other command asks. `auto` already runs `bash` without asking, and `read-only` refuses it.
 
 - An entry is a word prefix: `go test` allows `go test ./... -run X`, with any further arguments. Choose entries whose arguments cannot start other programs: `go test -exec` can.
+
 - An entry ending in `$` matches the whole command: `git diff$` allows `git diff` but not `git diff --output=x`.
+
 - A command matches only if it is one simple command. Anything that chains, substitutes, redirects or expands a variable asks: `;`, `&&`, `|`, `$(...)`, backticks, `$VAR` or `>`.
 
 `hosts` allowlists network tools. An entry is a host, or `*.` and a domain for any host below it: `*.githubusercontent.com` covers `raw.githubusercontent.com` but not `githubusercontent.com`. Ports and case are ignored. A call to listed hosts that also writes files is then judged by its paths.
@@ -164,7 +193,9 @@ An unknown key or a malformed entry stops gila with the file's path, so a typo n
 These checks guard against mistakes, not an adversary.
 
 - `bash` is not confined: `cat .env`, `rm -rf .git` or `curl` to any host through it are not caught, in any mode where it runs.
+
 - A symlink swapped between the check and the write can redirect it.
+
 - A host is checked by name, not by where it resolves or redirects.
 
 ### Tuning
@@ -294,10 +325,15 @@ res, err := a.Run(ctx, "make the tests pass", func(e agent.Event) {
   a, err := app.New(app.Options{Tools: []tool.Tool{count}})
   ```
 - `Options.Rules` adds secrets, protected paths, commands and hosts. The built-in patterns, those in `ConfigDir`'s `settings.toml` and the app's `Options.Rules` are separate layers: a path needs approval when any layer matches it, and a `!` exempts only within its own layer. So an app cannot lift what the user's settings protect. `permission.Builtin()` lists the built-in patterns.
+
 - `Options.Permissions` sets the mode; empty takes `mode` from `ConfigDir`'s `settings.toml`, then `auto`. `Options.Ask` sets how a call that needs approval asks; nil refuses such calls. `SetPermissions` changes either later. The `agent` package alone applies no mode: its `Approve` defaults to running every call.
+
 - `Options.Keys` takes vendor keys by provider id and wins over the environment. A GUI app launched from the desktop inherits no shell variables.
+
 - `Options.StateDir`, `CacheDir` and `ConfigDir` keep its state, price list and `AGENTS.md` apart from the CLI's.
+
 - `bash` inherits the process environment. A macOS GUI app's `PATH` lacks Homebrew and toolchain directories, so set `PATH` at startup, for example from `$SHELL -lc 'echo $PATH'`.
+
 - `Run` blocks, so call it from a goroutine and cancel it through its context. One `Run` at a time per `Agent`; read usage from `Response` events rather than from the `Agent` while a run is in flight.
 
 Importing `agent`, `app` or the adapters links no TUI or CLI dependency.

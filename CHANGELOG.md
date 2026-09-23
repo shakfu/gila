@@ -41,6 +41,10 @@
 
 - For embedding apps: `agent.Config.Approve` is asked before each call, and `permission.Approver` builds one from a mode. `agent.Record` maps events to JSON-ready records. `app.Options.Keys` takes vendor keys ahead of the environment, which a GUI app does not inherit. `StateDir`, `CacheDir` and `ConfigDir` keep an app's state apart from the CLI's.
 
+- CI on GitHub Actions (`.github/workflows/ci.yml`) runs `make check` and the mock-provider smoke test `make run` on Linux and macOS, for pushes to `main` and pull requests.
+
+- `go run ./scripts/tally run.jsonl ...` counts tool use in `--json` output per model: calls, failures and output bytes for each tool, with `bash` split by the programs a command runs. See `docs/dev/tools.md`.
+
 ### Fixed
 
 - `write` without `content`, or `edit` without `new_string`, succeeded and emptied the file or deleted the match. A missing or `null` string argument decoded as `""`. OpenAI tools are sent non-strict, and local servers may not enforce schemas, so the model's `required` list was no guarantee. Both are now errors that leave the file unchanged; an explicit `""` is still accepted.
