@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -90,7 +91,7 @@ func (r Read) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 	total, shown, cut := 0, 0, false
 	for {
 		line, long, err := readLine(br)
-		if err == io.EOF {
+		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
@@ -125,7 +126,7 @@ func readLine(br *bufio.Reader) (string, bool, error) {
 	for {
 		chunk, isPrefix, err := br.ReadLine()
 		if err != nil {
-			if err == io.EOF && (buf != nil || long) {
+			if errors.Is(err, io.EOF) && (buf != nil || long) {
 				break
 			}
 			return "", false, err

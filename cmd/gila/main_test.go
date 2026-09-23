@@ -30,6 +30,18 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+// testEnv is the environment without the user's GILA_ variables, which would change what
+// the binary does (GILA_PERMISSIONS, GILA_PROVIDER) or where it writes (GILA_LOG), plus extra.
+func testEnv(extra ...string) []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if !strings.HasPrefix(kv, "GILA_") {
+			env = append(env, kv)
+		}
+	}
+	return append(env, extra...)
+}
+
 // gila runs the binary in a scratch directory with its own state, and returns stdout, stderr
 // and the exit status.
 func gila(t *testing.T, script string, args ...string) (string, string, int) {
@@ -43,7 +55,7 @@ func gila(t *testing.T, script string, args ...string) (string, string, int) {
 	}
 	cmd := exec.Command(bin, args...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir)
+	cmd.Env = testEnv("XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir)
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
@@ -121,7 +133,7 @@ func TestPromptFromStdin(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "m.json"), []byte(`[{"text":"ok"}]`), 0o644)
 	cmd := exec.Command(bin, "--mock", "m.json", "-p", "-", "--json")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+dir)
+	cmd.Env = testEnv("XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir)
 	cmd.Stdin = strings.NewReader("from stdin")
 	out, err := cmd.Output()
 	if err != nil || !strings.Contains(string(out), `"outcome":"complete"`) {
@@ -134,11 +146,11 @@ func TestEmptyPromptFromStdinIsAnError(t *testing.T) {
 	dir := t.TempDir()
 	cmd := exec.Command(bin, "--mock", "m.json", "-p", "-", "--json")
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+dir)
+	cmd.Env = testEnv("XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir)
 	cmd.Stdin = strings.NewReader("")
 	out, err := cmd.Output()
 	var exit *exec.ExitError
-	if !errors.As(err, &exit) || !strings.Contains(string(out), `"outcome":"error"`) {
+	if !errors.As(err, &exit) || exit.ExitCode() != 2 || !strings.Contains(string(out), `"outcome":"error"`) {
 		t.Fatalf("%v %s", err, out)
 	}
 }
@@ -214,7 +226,7 @@ func gilaWithSettings(t *testing.T, settings, script string, wantCode int, args 
 	os.WriteFile(filepath.Join(dir, "mock.json"), []byte(script), 0o600)
 	cmd := exec.Command(bin, append([]string{"--mock", "mock.json"}, args...)...)
 	cmd.Dir = dir
-	cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+filepath.Join(dir, "cfg"))
+	cmd.Env = testEnv("XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+filepath.Join(dir, "cfg"))
 	var out, errb bytes.Buffer
 	cmd.Stdout, cmd.Stderr = &out, &errb
 	err := cmd.Run()
@@ -272,7 +284,7 @@ func TestRetriesAreShown(t *testing.T) {
 		}
 		cmd := exec.Command(bin, args...)
 		cmd.Dir = dir
-		cmd.Env = append(os.Environ(), "XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir, "OPENROUTER_API_KEY=k")
+		cmd.Env = testEnv("XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir, "OPENROUTER_API_KEY=k")
 		var out, errb bytes.Buffer
 		cmd.Stdout, cmd.Stderr = &out, &errb
 		if err := cmd.Run(); err != nil {
@@ -284,5 +296,17 @@ func TestRetriesAreShown(t *testing.T) {
 		if !asJSON && !strings.Contains(errb.String(), "[retry] 1 after 502 Bad Gateway") {
 			t.Errorf("no retry line:\n%s", errb.String())
 		}
+	}
+}
+
+func TestTheUsersGilaVariablesDoNotReachTheBinary(t *testing.T) {
+	t.Setenv("GILA_PERMISSIONS", "read-only")
+	t.Setenv("GILA_LOG", filepath.Join(t.TempDir(), "log"))
+	stdout, _, code := gila(t, `[{"calls":[{"name":"write","arguments":{"path":"x","content":"1"}}]},{"text":"ok"}]`, "-p", "go", "--json")
+	if code != 0 || !strings.Contains(stdout, `"permissions":"auto"`) {
+		t.Fatalf("exit %d, the user's GILA_PERMISSIONS leaked:\n%s", code, stdout)
+	}
+	if _, err := os.Stat(os.Getenv("GILA_LOG")); err == nil {
+		t.Fatal("the user's GILA_LOG leaked")
 	}
 }

@@ -207,6 +207,10 @@ func (a *accumulator) add(chunk components.ChatStreamChunk, emit func(llm.Event)
 			a.reasoning = mergeReasoning(a.reasoning, r)
 		}
 		for _, tc := range d.ToolCalls {
+			// The index comes from the server; a negative one would panic below.
+			if tc.Index < 0 {
+				continue
+			}
 			for int(tc.Index) >= len(a.calls) {
 				a.calls = append(a.calls, &partial{})
 			}

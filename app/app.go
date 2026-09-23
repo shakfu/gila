@@ -40,7 +40,7 @@ type Options struct {
 	Context   int64
 	Mock      string
 	Root      string
-	// Refresh refetches the price list and model lists.
+	// Refresh refetches the price list, ignoring its daily cache.
 	Refresh bool
 	// StateDir, CacheDir and ConfigDir replace gila's XDG directories when set: saved state and
 	// history, the price list, and the user's AGENTS.md and skills. An embedding app sets them
@@ -277,7 +277,7 @@ func (a *App) checkModel(ctx context.Context, id string, p llm.Provider, model s
 	}
 	hint := "; /models in the REPL lists them"
 	switch {
-	case strings.Contains(model, "/") && id != "openrouter":
+	case strings.Contains(model, "/") && !strings.HasPrefix(model, "/") && !isLocal(id) && id != "openrouter":
 		hint = fmt.Sprintf("; for an OpenRouter model, use openrouter:%s", model)
 	default:
 		if near := nearModels(models, model); len(near) > 0 {
@@ -285,6 +285,11 @@ func (a *App) checkModel(ctx context.Context, id string, p llm.Provider, model s
 		}
 	}
 	return fmt.Errorf("%s does not offer model %q%s", id, model, hint)
+}
+
+func isLocal(id string) bool {
+	e, ok := provider.Find(id)
+	return ok && e.Local()
 }
 
 // nearModels returns up to three listed ids that share the model's leading word, such as

@@ -132,7 +132,8 @@ func run(f flags) int {
 	if f.headless && strings.TrimSpace(f.prompt) == "" {
 		err := errors.New("the prompt is empty")
 		if f.json {
-			return writeFailure(os.Stdout, err)
+			writeFailure(os.Stdout, err)
+			return 2
 		}
 		fmt.Fprintln(os.Stderr, "gila:", err)
 		return 2

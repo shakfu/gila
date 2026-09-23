@@ -45,6 +45,14 @@
 
 - A model the provider does not list is refused, at startup and on `/model`, with a hint. `-m deepseek/deepseek-v4.1-flash` with `openai` suggests `openrouter:deepseek/deepseek-v4.1-flash`; before, it was accepted and failed on the first request. OpenAI's model list no longer offers models that cannot chat, such as `babbage-002` or `tts-1`.
 
+- A tool-call chunk from OpenRouter with a negative index crashed gila; it is now ignored.
+
+- `-p -` with empty input and `--json` exited 1; it exits 2, like every other usage error.
+
+- A custom tool whose schema was decoded from JSON lost its `required` list, because `ToolSpec.Required` accepted only `[]string`.
+
+- A llama.cpp model id, which is a file path, got the hint to use `openrouter:`. The hint now applies only to cloud providers.
+
 - A cost estimate uses the highest long-prompt tier the prompt passes. It took the last matching tier in list order, so a price list with tiers out of order priced a long prompt at a lower tier's rate.
 
 ### Changed

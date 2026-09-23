@@ -5,9 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 	"time"
 
@@ -153,7 +153,15 @@ func TestADroppedConnectionIsReported(t *testing.T) {
 	defer srv.Close()
 	ctx := llm.WithRetries(context.Background(), func(int, string) {})
 	_, err := New("openrouter", "k", srv.URL).Stream(ctx, request("m", llm.Message{Role: llm.User, Text: "hi"}), func(llm.Event) {})
-	if !errors.Is(err, llm.ErrIncomplete) || !strings.Contains(err.Error(), "EOF") {
+	if !errors.Is(err, llm.ErrIncomplete) || !errors.Is(err, io.ErrUnexpectedEOF) {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestANegativeToolIndexIsIgnored(t *testing.T) {
+	var a accumulator
+	srvChunk(t, &a, `{"id":"g","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":{"tool_calls":[{"index":-1,"id":"x","type":"function","function":{"name":"read","arguments":"{}"}}]}}]}`)
+	if len(a.calls) != 0 {
+		t.Fatalf("calls %d", len(a.calls))
 	}
 }

@@ -312,6 +312,11 @@ func TestModelsAreCheckedAgainstTheProvidersList(t *testing.T) {
 			t.Errorf("%s: got %v, want %q", model, err, want)
 		}
 	}
+	// A llama-server id is a file path; it is not an OpenRouter id.
+	local := fakeModels{ids: []string{"/models/a.gguf"}}
+	if err := a.checkModel(ctx, "llamacpp", local, "/models/b.gguf"); err == nil || strings.Contains(err.Error(), "openrouter:") {
+		t.Errorf("local path id: %v", err)
+	}
 	// A provider that cannot list its models is not second-guessed.
 	if err := a.checkModel(ctx, "compat", fakeModels{err: errors.New("no /models")}, "anything"); err != nil {
 		t.Errorf("unlisted provider: %v", err)

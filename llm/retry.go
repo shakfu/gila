@@ -107,7 +107,7 @@ func Incomplete(ctx context.Context) error {
 		s.mu.Lock()
 		defer s.mu.Unlock()
 		if s.readErr != nil {
-			return fmt.Errorf("%w: %v", ErrIncomplete, s.readErr)
+			return fmt.Errorf("%w: %w", ErrIncomplete, s.readErr)
 		}
 	}
 	return ErrIncomplete

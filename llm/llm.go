@@ -71,9 +71,21 @@ func (t ToolSpec) Properties() map[string]any {
 	return p
 }
 
+// A schema written in Go holds []string; one decoded from JSON holds []any.
 func (t ToolSpec) Required() []string {
-	r, _ := t.Schema["required"].([]string)
-	return r
+	switch r := t.Schema["required"].(type) {
+	case []string:
+		return r
+	case []any:
+		out := make([]string, 0, len(r))
+		for _, v := range r {
+			if s, ok := v.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
 }
 
 type Request struct {

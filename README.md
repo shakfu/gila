@@ -58,7 +58,7 @@ Flags:
 
 Selection:
 
-- No `-P`: the provider last used, while its key is set; then the first of anthropic, openai, openrouter whose key is set. Local servers, `compat` included, are never chosen automatically, so an unreachable endpoint is never picked silently.
+- No `-P`: the provider last used, while it can still run (a cloud provider needs its key set); then the first of anthropic, openai, openrouter whose key is set. A local server, `compat` included, is reused only after you named it with `-P` or `/provider`; the fallback never picks one, so an endpoint you never chose is never tried silently.
 - No `-m`: the model last used with that provider, then the default above.
 - `-m provider:model` names both, for example `-m openrouter:openai/gpt-5.5` or `-m ollama:qwen3:8b`.
 - A model the provider does not list is refused, at startup and on `/model`, with a hint: `openrouter:ID` for an id that belongs to OpenRouter, or the listed ids it resembles. A provider that lists no models is not checked. OpenAI's list leaves out models that cannot chat, such as embeddings, speech and image models.
