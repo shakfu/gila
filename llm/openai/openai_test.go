@@ -158,7 +158,7 @@ func TestRefusalsAndFilteredResponsesStopAsRefusals(t *testing.T) {
 	call := `{"type":"function_call","id":"fc","call_id":"c","name":"write","arguments":"{\"pa","status":"incomplete"}`
 	cases := map[string]struct {
 		event, response, text string
-		want              llm.StopReason
+		want                  llm.StopReason
 	}{
 		"refusal": {"response.completed",
 			`"status":"completed","output":[{"type":"message","id":"m","role":"assistant","status":"completed","content":[{"type":"refusal","refusal":"No."}]}]}`,

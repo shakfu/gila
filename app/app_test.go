@@ -39,6 +39,13 @@ func TestAKeyNeedsANamedProvider(t *testing.T) {
 	if _, err := New(Options{APIKey: "k"}); err == nil {
 		t.Fatal("a key without a provider was accepted")
 	}
+	// An endpoint was dropped when autoselect picked the provider, so prompts went to the vendor.
+	if _, err := New(Options{BaseURL: "http://gw", Keys: map[string]string{"openai": "k"}}); err == nil {
+		t.Fatal("an endpoint without a provider was accepted")
+	}
+	if _, err := New(Options{Model: "openai:m", APIKey: "k", BaseURL: "http://gw"}); err != nil {
+		t.Fatalf("PROVIDER:ID did not name the provider: %v", err)
+	}
 }
 
 func TestConflictingProviderIsRefused(t *testing.T) {

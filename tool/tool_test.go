@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 	"unicode/utf8"
@@ -327,5 +328,62 @@ func TestBashSummaryDropsControlCharacters(t *testing.T) {
 	}
 	if res.Summary != "done" {
 		t.Fatalf("summary %q", res.Summary)
+	}
+}
+
+// A missing or null required argument decodes as "", so without a check write would empty the
+// file and edit would delete the match.
+func TestMissingRequiredArgumentsChangeNothing(t *testing.T) {
+	e := env(t)
+	path := filepath.Join(e.Root, "f")
+	cases := map[string]struct {
+		tool Tool
+		args string
+	}{
+		"write without content": {Write{e}, `{"path":"f"}`},
+		"write with null":       {Write{e}, `{"path":"f","content":null}`},
+		"edit without new":      {Edit{e}, `{"path":"f","old_string":"keep"}`},
+		"edit with null new":    {Edit{e}, `{"path":"f","old_string":"keep","new_string":null}`},
+	}
+	for name, c := range cases {
+		write(t, path, "keep")
+		if _, err := c.tool.Run(context.Background(), json.RawMessage(c.args)); err == nil || !strings.Contains(err.Error(), "is required") {
+			t.Errorf("%s: %v", name, err)
+		}
+		if data, _ := os.ReadFile(path); string(data) != "keep" {
+			t.Errorf("%s: file is %q", name, data)
+		}
+	}
+	// An explicit empty string is a deliberate choice.
+	if _, err := (Write{e}).Run(context.Background(), json.RawMessage(`{"path":"f","content":""}`)); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Opening a FIFO for reading waits for a writer, which would hang the turn past a cancel.
+func TestReadAndEditRefuseAFIFOWithoutBlocking(t *testing.T) {
+	e := env(t)
+	if err := syscall.Mkfifo(filepath.Join(e.Root, "p"), 0o600); err != nil {
+		t.Skip(err)
+	}
+	done := make(chan error, 2)
+	for _, c := range []struct {
+		tool Tool
+		args string
+	}{{Read{e}, `{"path":"p"}`}, {Edit{e}, `{"path":"p","old_string":"a","new_string":"b"}`}} {
+		go func() {
+			_, err := c.tool.Run(context.Background(), json.RawMessage(c.args))
+			done <- err
+		}()
+	}
+	for range 2 {
+		select {
+		case err := <-done:
+			if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+				t.Errorf("got %v", err)
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("opening a FIFO blocked")
+		}
 	}
 }

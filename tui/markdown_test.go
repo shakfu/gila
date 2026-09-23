@@ -2,6 +2,7 @@ package tui
 
 import (
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
@@ -90,6 +91,28 @@ func TestToolLine(t *testing.T) {
 		}
 		if c.width > 0 && c.r.Err == nil && ansi.StringWidth(got) > c.width {
 			t.Errorf("%q is wider than %d", got, c.width)
+		}
+	}
+}
+
+// The approval prompt once cut the command to 20 columns at width 80, hiding a destructive
+// suffix. Every character of the call must be shown, and none may act on the terminal.
+func TestApprovalShowsTheWholeCall(t *testing.T) {
+	st := NewStyles()
+	label := "$ echo harmless-looking-prefix; rm -rf important-directory\ncat <<EOF\n\x1b[2Khidden\nEOF"
+	got := ansi.Strip(strings.Join(ApprovalLines(st, label, 30), "\n"))
+	joined := strings.ReplaceAll(got, "\n", "")
+	for _, want := range []string{"rm -rf important-directory", "cat <<EOF", `\x1b[2Khidden`} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("missing %q in\n%s", want, got)
+		}
+	}
+	if strings.ContainsRune(got, 0x1b) {
+		t.Errorf("escape reached the terminal: %q", got)
+	}
+	for _, l := range strings.Split(got, "\n") {
+		if ansi.StringWidth(l) > 30 {
+			t.Errorf("line wider than 30: %q", l)
 		}
 	}
 }

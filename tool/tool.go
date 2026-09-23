@@ -113,13 +113,22 @@ func (e Env) abs(path string) string {
 	return filepath.Join(e.Root, path)
 }
 
-// decode parses arguments into v. Empty arguments mean an empty object.
-func decode(args json.RawMessage, v any) error {
+// decode parses arguments into v. Empty arguments mean an empty object. A required key must be
+// present and not null: decoded into a string, either would pass as "", and write would empty
+// the file.
+func decode(args json.RawMessage, v any, required ...string) error {
 	if len(args) == 0 {
 		args = json.RawMessage("{}")
 	}
 	if err := json.Unmarshal(args, v); err != nil {
 		return fmt.Errorf("invalid arguments: %w", err)
+	}
+	var keys map[string]json.RawMessage
+	_ = json.Unmarshal(args, &keys)
+	for _, k := range required {
+		if raw, ok := keys[k]; !ok || string(raw) == "null" {
+			return fmt.Errorf("%s is required", k)
+		}
 	}
 	return nil
 }

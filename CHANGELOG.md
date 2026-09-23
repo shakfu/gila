@@ -39,6 +39,14 @@
 
 ### Fixed
 
+- `write` without `content`, or `edit` without `new_string`, succeeded and emptied the file or deleted the match. A missing or `null` string argument decoded as `""`. OpenAI tools are sent non-strict, and local servers may not enforce schemas, so the model's `required` list was no guarantee. Both are now errors that leave the file unchanged; an explicit `""` is still accepted.
+
+- The approval prompt cut the call to `max(width-60, 20)` columns, so at 80 columns `$ echo harmless; rm -rf dir` showed as `$ echo harmless-l...`. The whole call is now printed above the prompt, wrapped, with control characters shown as escapes.
+
+- `--base-url` was ignored when the provider was chosen automatically, from saved state or from the keys set. Prompts went to the vendor instead of the gateway. `--base-url` and `GILA_BASE_URL` now need `--provider`, as `--api-key` does. Both checks now run after `-m PROVIDER:ID` is read, so that form also names the provider.
+
+- `read` or `edit` on a FIFO waited for a writer before the regular-file check, and a cancel could not stop it. Files are now opened non-blocking and checked before reading. A `read` of a large file also stops on cancel.
+
 - A refusal or content-filtered response from OpenAI, OpenRouter or a Chat Completions server ended the prompt as a success, often as "(no response)". Only the Anthropic provider mapped refusals. The other three dropped the refusal text and treated a `content_filter` stop as a normal end. gila now shows the refusal text, answers any calls in a refused response with an error without running them, and fails the prompt. A filtered response can end mid-call, so running its calls could act on truncated arguments.
 
 - A response cut off mid-stream ended the prompt with "stream ended without a finish reason", even with the timeout below fixed. gila now sends the round-trip again, up to twice in a row, shown as a `[retry]` line; the cut response never enters the history. The SDKs retry a request that fails, not a response that stops partway. The error also names the read error that cut the stream, which the OpenRouter SDK's reader discards.

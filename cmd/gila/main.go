@@ -80,7 +80,7 @@ func main() {
 	fl.StringVarP(&f.prompt, "prompt", "p", "", "answer one `PROMPT` and exit; - reads stdin")
 	fl.StringVarP(&f.Root, "root", "C", "", "working `DIR` (default: the current one)")
 	fl.StringVar(&f.BaseURL, "base-url", os.Getenv("GILA_BASE_URL"),
-		"provider endpoint `URL`; turns off cost estimates")
+		"provider endpoint `URL`; needs --provider; turns off cost estimates")
 	fl.StringVar(&f.APIKey, "api-key", os.Getenv("GILA_API_KEY"), "provider `KEY`; needs --provider")
 	fl.StringVar(&f.Permissions, "permissions", os.Getenv("GILA_PERMISSIONS"),
 		"`MODE` for what runs without asking: auto, ask, all, read-only "+

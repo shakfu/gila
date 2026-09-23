@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"strings"
+	"syscall"
 
 	"github.com/shakfu/gila/llm"
 )
@@ -55,7 +56,7 @@ func (Read) Label(raw json.RawMessage) string {
 }
 
 // Run streams the file, so memory follows the lines returned rather than the file size.
-func (r Read) Run(_ context.Context, raw json.RawMessage) (Result, error) {
+func (r Read) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
 	var a readArgs
 	if err := decode(raw, &a); err != nil {
 		return Result{}, err
@@ -63,19 +64,11 @@ func (r Read) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 	if a.Path == "" {
 		return Result{}, fmt.Errorf("path is required")
 	}
-	f, err := os.Open(r.abs(a.Path))
+	f, info, err := openRegular(r.abs(a.Path), a.Path)
 	if err != nil {
 		return Result{}, err
 	}
 	defer f.Close()
-	info, err := f.Stat()
-	if err != nil {
-		return Result{}, err
-	}
-	// A device has no end, and a directory fails with a less helpful error.
-	if !info.Mode().IsRegular() {
-		return Result{}, fmt.Errorf("%s is not a regular file", a.Path)
-	}
 
 	br := bufio.NewReaderSize(f, 64<<10)
 	if head, _ := br.Peek(8 << 10); bytes.IndexByte(head, 0) >= 0 {
@@ -98,6 +91,9 @@ func (r Read) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 			return Result{}, err
 		}
 		total++
+		if total%4096 == 0 && ctx.Err() != nil {
+			return Result{}, ctx.Err()
+		}
 		// Lines past the window are still counted, so the footer can say how many are left.
 		if total >= start && shown < limit && out.Len() < OutputCap {
 			fmt.Fprintf(&out, "%6d\t%s\n", total, line)
@@ -116,6 +112,25 @@ func (r Read) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 		fmt.Fprintf(&out, "... long lines were cut at %d bytes\n", lineCap)
 	}
 	return Result{Output: out.String(), Summary: plural(shown, "line")}, nil
+}
+
+// openRegular opens path for reading and refuses anything but a regular file: a device has no
+// end, and a directory fails with a less helpful error. O_NONBLOCK keeps opening a FIFO from
+// waiting for a writer; the check is on the opened file, so a swap after it cannot slip past.
+func openRegular(path, name string) (*os.File, os.FileInfo, error) {
+	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	info, err := f.Stat()
+	if err == nil && !info.Mode().IsRegular() {
+		err = fmt.Errorf("%s is not a regular file", name)
+	}
+	if err != nil {
+		f.Close()
+		return nil, nil, err
+	}
+	return f, info, nil
 }
 
 // readLine returns one line without its newline or carriage return, cut at lineCap, and

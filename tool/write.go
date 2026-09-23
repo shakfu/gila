@@ -38,7 +38,7 @@ func (Write) Label(raw json.RawMessage) string {
 
 func (w Write) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 	var a writeArgs
-	if err := decode(raw, &a); err != nil {
+	if err := decode(raw, &a, "path", "content"); err != nil {
 		return Result{}, err
 	}
 	if a.Path == "" {

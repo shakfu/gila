@@ -91,10 +91,6 @@ func New(opts Options) (*App, error) {
 		}
 		opts.Root = wd
 	}
-	if opts.APIKey != "" && opts.Provider == "" {
-		// A key does not name its vendor; autoselect could send it to the wrong one.
-		return nil, fmt.Errorf("--api-key needs --provider")
-	}
 	for id := range opts.Keys {
 		if _, ok := provider.Find(id); !ok {
 			return nil, fmt.Errorf("key given for unknown provider %q", id)
@@ -105,6 +101,14 @@ func New(opts Options) (*App, error) {
 			return nil, fmt.Errorf("model %q names provider %s but --provider is %s", opts.Model, p, opts.Provider)
 		}
 		opts.Provider, opts.Model = p, m
+	}
+	// Neither a key nor an endpoint names its vendor, so autoselect could send the key to the
+	// wrong one, or pick a provider whose endpoint is then ignored.
+	switch {
+	case opts.APIKey != "" && opts.Provider == "":
+		return nil, fmt.Errorf("--api-key needs --provider")
+	case opts.BaseURL != "" && opts.Provider == "":
+		return nil, fmt.Errorf("--base-url needs --provider")
 	}
 
 	if opts.ConfigDir == "" {

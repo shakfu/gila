@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"io"
 	"strings"
 
 	"github.com/shakfu/gila/llm"
@@ -42,7 +42,7 @@ func (Edit) Label(raw json.RawMessage) string {
 // failed one.
 func (e Edit) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 	var a editArgs
-	if err := decode(raw, &a); err != nil {
+	if err := decode(raw, &a, "path", "old_string", "new_string"); err != nil {
 		return Result{}, err
 	}
 	if a.Path == "" {
@@ -56,7 +56,12 @@ func (e Edit) Run(_ context.Context, raw json.RawMessage) (Result, error) {
 		return Result{}, fmt.Errorf("old_string and new_string are identical")
 	}
 	path := e.abs(a.Path)
-	data, err := os.ReadFile(path)
+	f, _, err := openRegular(path, a.Path)
+	if err != nil {
+		return Result{}, err
+	}
+	data, err := io.ReadAll(f)
+	f.Close()
 	if err != nil {
 		return Result{}, err
 	}

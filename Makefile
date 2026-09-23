@@ -8,30 +8,30 @@ LDFLAGS     := -s -w -X main.version=$(VERSION)
 all: build
 
 build:
-	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/gila
+	@go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/gila
 
 test:
-	go test ./...
+	@go test ./...
 
 race:
-	go test -race ./...
+	@go test -race ./...
 
 # Matches what CI would run. `make fmt` applies what `lint` only reports.
 lint:
 	@test -z "$$(gofmt -l .)" || { gofmt -l .; echo "gofmt: files need formatting"; exit 1; }
-	go vet ./...
+	@go vet ./...
 
 fmt:
-	gofmt -w .
+	@gofmt -w .
 
 check: lint race
 
 # Offline smoke tests: no network, no API key.
 run: build
-	$(BIN) --mock mock/read-then-answer.json -p "what is this package?"
+	@$(BIN) --mock mock/read-then-answer.json -p "what is this package?"
 
 repl: build
-	$(BIN) --mock mock/say-hi.json
+	@$(BIN) --mock mock/say-hi.json
 
 install: build
 	@install -d $(INSTALL_DIR)
@@ -39,7 +39,7 @@ install: build
 	@echo "installed gila to $(INSTALL_DIR)"
 
 clean:
-	rm -rf bin
+	@rm -rf bin
 
 help:
 	@echo "build     compile to $(BIN) (default)"

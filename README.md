@@ -26,7 +26,8 @@ Flags:
   -m, --model ID           model ID, or PROVIDER:ID
   -p, --prompt PROMPT      answer one PROMPT and exit; - reads stdin
   -C, --root DIR           working DIR (default: the current one)
-      --base-url URL       provider endpoint URL; turns off cost estimates
+      --base-url URL       provider endpoint URL; needs --provider; turns
+                           off cost estimates
       --api-key KEY        provider KEY; needs --provider
       --permissions MODE   MODE for what runs without asking: auto, ask,
                            all, read-only (default: mode in settings.toml,

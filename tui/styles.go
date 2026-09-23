@@ -124,6 +124,35 @@ func ToolLine(st Styles, r agent.ToolResult, width int) string {
 	return line
 }
 
+// ApprovalLines prints the call awaiting approval in full, wrapped to width, so what the user
+// approves is exactly what runs. The live prompt below it has room for one line only.
+func ApprovalLines(st Styles, label string, width int) []string {
+	lines := []string{st.Warn.Bold(true).Render("approve:")}
+	for _, l := range strings.Split(visible(label), "\n") {
+		lines = append(lines, ansi.Hardwrap("  "+l, width, true))
+	}
+	return lines
+}
+
+// visible shows control characters other than newline and tab as escapes. Stripping them would
+// hide bytes from the user that the tool still receives; printing them could move the cursor.
+func visible(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		switch {
+		case r == '\n' || r == '\t':
+			b.WriteRune(r)
+		case r < 0x20 || r == 0x7f:
+			fmt.Fprintf(&b, `\x%02x`, r)
+		case r >= 0x80 && r < 0xa0:
+			fmt.Fprintf(&b, `\u%04x`, r)
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 // RetryLine describes a retry, such as "[retry] 2 after 503 Service Unavailable".
 func RetryLine(r agent.Retry) string {
 	line := fmt.Sprintf("[retry] %d", r.Attempt)

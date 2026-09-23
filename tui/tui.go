@@ -222,8 +222,11 @@ func (m *model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.approval = &msg
 			m.phase = "waiting for approval"
+			for _, l := range ApprovalLines(m.st, msg.label, m.width) {
+				m.out(l)
+			}
 		}
-		return m, listen(m.events)
+		return m, tea.Sequence(m.flush(), listen(m.events))
 
 	case doneMsg:
 		m.finish(msg)
@@ -524,8 +527,8 @@ func (m *model) View() tea.View {
 		b.WriteString(m.picker.view(m.st, w))
 	}
 	if q := m.approval; q != nil {
-		b.WriteString(m.st.Warn.Bold(true).Render("allow ") + ansi.Truncate(oneLine(q.label), max(w-60, 20), "...") +
-			m.st.Warn.Bold(true).Render("?") + m.st.Dim.Render("  y yes | n no | a always for "+q.call.Name+" | Esc no") + "\n")
+		b.WriteString(m.st.Warn.Bold(true).Render("allow the "+q.call.Name+" call above?") +
+			m.st.Dim.Render("  y yes | n no | a always for "+q.call.Name+" | Esc no") + "\n")
 	}
 	b.WriteString(m.st.Dim.Render(strings.Repeat("-", w)) + "\n")
 	b.WriteString(m.input.View() + "\n")
