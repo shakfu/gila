@@ -50,7 +50,7 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 	for stream.Next() {
 		ev := stream.Current()
 		switch ev.Type {
-		case "response.output_text.delta":
+		case "response.output_text.delta", "response.refusal.delta":
 			emit(llm.Event{Kind: llm.TextDelta, Text: ev.Delta})
 		case "response.reasoning_summary_text.delta", "response.reasoning_text.delta":
 			emit(llm.Event{Kind: llm.ReasoningDelta, Text: ev.Delta})
@@ -134,6 +134,7 @@ func (p *Provider) input(req llm.Request) (responses.ResponseInputParam, error) 
 func (p *Provider) response(model string, r *responses.Response) (llm.Response, error) {
 	msg := llm.Message{Role: llm.Assistant, Text: r.OutputText()}
 	var native responses.ResponseInputParam
+	refused := r.Status == responses.ResponseStatusIncomplete && r.IncompleteDetails.Reason == "content_filter"
 	for _, item := range r.Output {
 		// Output items replay as input items of the same shape: reasoning with its encrypted
 		// content, messages, and function calls.
@@ -142,18 +143,29 @@ func (p *Provider) response(model string, r *responses.Response) (llm.Response, 
 			return llm.Response{}, fmt.Errorf("replaying %s item: %w", item.Type, err)
 		}
 		native = append(native, in)
-		if item.Type == "function_call" {
+		switch item.Type {
+		case "function_call":
 			msg.Calls = append(msg.Calls, llm.ToolCall{ID: item.CallID, Name: item.Name, Arguments: item.Arguments.OfString})
+		case "message":
+			// OutputText skips refusal parts, which would leave the user no reason.
+			for _, c := range item.Content {
+				if c.Type == "refusal" {
+					msg.Text += c.Refusal
+					refused = true
+				}
+			}
 		}
 	}
 	msg.Native = &llm.Native{Provider: p.name, Model: model, Data: native}
 
 	u := r.Usage
 	stop := llm.StopEnd
-	// A cut-off response can carry a call with truncated arguments, so max tokens wins.
+	// A cut-off or filtered response can carry a call with truncated arguments, so either wins.
 	switch {
 	case r.Status == responses.ResponseStatusIncomplete && r.IncompleteDetails.Reason == "max_output_tokens":
 		stop = llm.StopMaxTokens
+	case refused:
+		stop = llm.StopRefusal
 	case len(msg.Calls) > 0:
 		stop = llm.StopToolUse
 	}

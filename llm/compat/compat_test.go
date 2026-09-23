@@ -2,6 +2,7 @@ package compat
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -73,5 +74,26 @@ func TestLengthWinsOverToolCalls(t *testing.T) {
 	resp, err := New("llamacpp", "", srv.URL).Stream(context.Background(), llm.Request{Model: "m", Messages: []llm.Message{{Role: llm.User, Text: "hi"}}}, func(llm.Event) {})
 	if err != nil || resp.Stop != llm.StopMaxTokens {
 		t.Fatalf("stop %q err %v", resp.Stop, err)
+	}
+}
+
+// A refusal or a filtered response must reach the agent as a refusal, not as a finished answer.
+func TestRefusalsAndFilteredResponsesStopAsRefusals(t *testing.T) {
+	const chunk = `{"id":"c","object":"chat.completion.chunk","created":1,"model":"m","choices":[{"index":0,"delta":%s,"finish_reason":%s}]}`
+	cases := map[string]struct{ delta, finish, text string }{
+		"refusal":        {`{"refusal":"No."}`, `"stop"`, "No."},
+		"content filter": {`{"tool_calls":[{"index":0,"id":"a","type":"function","function":{"name":"write","arguments":"{\"pa"}}]}`, `"content_filter"`, ""},
+	}
+	for name, c := range cases {
+		srv := llmtest.New(t, llmtest.SSE("", fmt.Sprintf(chunk, c.delta, c.finish), "", "[DONE]"))
+		var streamed strings.Builder
+		resp, err := New("llamacpp", "", srv.URL).Stream(context.Background(), llm.Request{Model: "m", Messages: []llm.Message{{Role: llm.User, Text: "hi"}}}, func(e llm.Event) {
+			if e.Kind == llm.TextDelta {
+				streamed.WriteString(e.Text)
+			}
+		})
+		if err != nil || resp.Stop != llm.StopRefusal || resp.Message.Text != c.text || streamed.String() != c.text {
+			t.Errorf("%s: stop %q text %q streamed %q err %v", name, resp.Stop, resp.Message.Text, streamed.String(), err)
+		}
 	}
 }

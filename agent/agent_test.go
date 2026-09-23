@@ -116,6 +116,22 @@ func TestTruncatedCallsAreNotRun(t *testing.T) {
 	}
 }
 
+// A refused response may carry calls; they are answered, not run, and the run fails.
+func TestRefusedCallsAreNotRun(t *testing.T) {
+	a, _, root := newAgent(t,
+		mock.Step{Calls: []mock.Call{call("write", map[string]string{"path": "x", "content": "partial"})}, Stop: llm.StopRefusal},
+	)
+	if _, err := a.Run(context.Background(), "go", nil); err == nil {
+		t.Fatal("a refusal was taken as success")
+	}
+	if _, err := os.Stat(filepath.Join(root, "x")); err == nil {
+		t.Fatal("a refused call ran")
+	}
+	if r := a.History[2].Results[0]; !r.IsError {
+		t.Fatalf("got %+v", r)
+	}
+}
+
 func TestAFailedFirstRequestTakesThePromptBack(t *testing.T) {
 	a, _, _ := newAgent(t, mock.Step{Error: "boom"})
 	if _, err := a.Run(context.Background(), "go", nil); err == nil {

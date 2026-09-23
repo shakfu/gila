@@ -49,6 +49,9 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 		if d.Content != "" {
 			emit(llm.Event{Kind: llm.TextDelta, Text: d.Content})
 		}
+		if d.Refusal != "" {
+			emit(llm.Event{Kind: llm.TextDelta, Text: d.Refusal})
+		}
 		// llama-server and ollama stream a thinking model's reasoning outside the spec.
 		for _, key := range []string{"reasoning_content", "reasoning"} {
 			if f, ok := d.JSON.ExtraFields[key]; ok {
@@ -72,15 +75,17 @@ func (p *Provider) Stream(ctx context.Context, req llm.Request, emit func(llm.Ev
 	}
 
 	choice := acc.Choices[0]
-	msg := llm.Message{Role: llm.Assistant, Text: choice.Message.Content}
+	msg := llm.Message{Role: llm.Assistant, Text: choice.Message.Content + choice.Message.Refusal}
 	for _, tc := range choice.Message.ToolCalls {
 		msg.Calls = append(msg.Calls, llm.ToolCall{ID: tc.ID, Name: tc.Function.Name, Arguments: tc.Function.Arguments})
 	}
 	stop := llm.StopEnd
-	// A cut-off response can carry a call with truncated arguments, so length wins.
+	// A cut-off or filtered response can carry a call with truncated arguments, so either wins.
 	switch {
 	case choice.FinishReason == "length":
 		stop = llm.StopMaxTokens
+	case choice.FinishReason == "content_filter" || choice.Message.Refusal != "":
+		stop = llm.StopRefusal
 	case len(msg.Calls) > 0:
 		stop = llm.StopToolUse
 	}

@@ -39,6 +39,8 @@
 
 ### Fixed
 
+- A refusal or content-filtered response from OpenAI, OpenRouter or a Chat Completions server ended the prompt as a success, often as "(no response)". Only the Anthropic provider mapped refusals. The other three dropped the refusal text and treated a `content_filter` stop as a normal end. gila now shows the refusal text, answers any calls in a refused response with an error without running them, and fails the prompt. A filtered response can end mid-call, so running its calls could act on truncated arguments.
+
 - A response cut off mid-stream ended the prompt with "stream ended without a finish reason", even with the timeout below fixed. gila now sends the round-trip again, up to twice in a row, shown as a `[retry]` line; the cut response never enters the history. The SDKs retry a request that fails, not a response that stops partway. The error also names the read error that cut the stream, which the OpenRouter SDK's reader discards.
 
 - OpenRouter streams longer than 60 seconds were cut off, and a prompt with a large context could time out before its first token and retry silently. The SDK's default HTTP client has a 60-second limit on the whole request, and its event reader drops the read error, so a cut stream reported only "stream ended without a finish reason". gila now gives the SDK a client that bounds connecting and waiting for headers but not the stream.
@@ -60,6 +62,8 @@
 - By default gila asks before a write outside the working directory, under version-control metadata or to a secret, and before reading a secret. 0.1.0 ran every call. With no one to ask, as under `--json`, such a call is refused. `--permissions all` restores the old behaviour.
 
 - `--json` `tool_call` and `tool_result` records carry a `label` field.
+
+- A tool line's arguments print dimmed, like `[tool]` and the outcome, so the answer stands out from the calls.
 
 - Tool lines in the REPL and on `-p`'s stderr start with `[tool] `, as in myra, so they stand apart from the answer when read without colour. They stay one line, cut at the label so the outcome remains.
 

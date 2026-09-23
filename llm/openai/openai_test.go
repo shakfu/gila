@@ -151,3 +151,38 @@ func TestRetriesAreReported(t *testing.T) {
 		t.Fatalf("reasons %v", reasons)
 	}
 }
+
+// A refusal or a filtered response must reach the agent as a refusal, not as a finished answer.
+func TestRefusalsAndFilteredResponsesStopAsRefusals(t *testing.T) {
+	const head = `{"id":"r","object":"response","created_at":1,"model":"m","usage":{"input_tokens":1,"output_tokens":1,"total_tokens":2,"input_tokens_details":{"cached_tokens":0},"output_tokens_details":{"reasoning_tokens":0}},`
+	call := `{"type":"function_call","id":"fc","call_id":"c","name":"write","arguments":"{\"pa","status":"incomplete"}`
+	cases := map[string]struct {
+		event, response, text string
+		want              llm.StopReason
+	}{
+		"refusal": {"response.completed",
+			`"status":"completed","output":[{"type":"message","id":"m","role":"assistant","status":"completed","content":[{"type":"refusal","refusal":"No."}]}]}`,
+			"No.", llm.StopRefusal},
+		"content filter": {"response.incomplete",
+			`"status":"incomplete","incomplete_details":{"reason":"content_filter"},"output":[` + call + `]}`,
+			"", llm.StopRefusal},
+		"max tokens": {"response.incomplete",
+			`"status":"incomplete","incomplete_details":{"reason":"max_output_tokens"},"output":[` + call + `]}`,
+			"", llm.StopMaxTokens},
+	}
+	for name, c := range cases {
+		srv := llmtest.New(t, llmtest.SSE(
+			"response.refusal.delta", `{"type":"response.refusal.delta","item_id":"m","output_index":0,"content_index":0,"delta":"`+c.text+`","sequence_number":1}`,
+			c.event, `{"type":"`+c.event+`","sequence_number":2,"response":`+head+c.response+`}`,
+		))
+		var streamed strings.Builder
+		resp, err := New("openai", "k", srv.URL).Stream(context.Background(), request("m", llm.Message{Role: llm.User, Text: "hi"}), func(e llm.Event) {
+			if e.Kind == llm.TextDelta {
+				streamed.WriteString(e.Text)
+			}
+		})
+		if err != nil || resp.Stop != c.want || resp.Message.Text != c.text || streamed.String() != c.text {
+			t.Errorf("%s: stop %q text %q streamed %q err %v", name, resp.Stop, resp.Message.Text, streamed.String(), err)
+		}
+	}
+}

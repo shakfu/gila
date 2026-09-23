@@ -185,6 +185,7 @@ type accumulator struct {
 	reasoning []components.ReasoningDetailUnion
 	usage     *components.ChatUsage
 	finish    components.ChatFinishReasonEnum
+	refused   bool
 }
 
 func (a *accumulator) add(chunk components.ChatStreamChunk, emit func(llm.Event)) {
@@ -198,6 +199,11 @@ func (a *accumulator) add(chunk components.ChatStreamChunk, emit func(llm.Event)
 		d := choice.Delta
 		if s, ok := d.Content.GetOrZero(); ok && s != "" {
 			a.text.WriteString(s)
+			emit(llm.Event{Kind: llm.TextDelta, Text: s})
+		}
+		if s, ok := d.Refusal.GetOrZero(); ok && s != "" {
+			a.text.WriteString(s)
+			a.refused = true
 			emit(llm.Event{Kind: llm.TextDelta, Text: s})
 		}
 		if s, ok := d.Reasoning.GetOrZero(); ok && s != "" {
@@ -293,10 +299,12 @@ func (a *accumulator) response(provider, model string) llm.Response {
 		}
 	}
 	stop := llm.StopEnd
-	// A cut-off response can carry a call with truncated arguments, so length wins.
+	// A cut-off or filtered response can carry a call with truncated arguments, so either wins.
 	switch {
 	case a.finish == components.ChatFinishReasonEnumLength:
 		stop = llm.StopMaxTokens
+	case a.finish == components.ChatFinishReasonEnumContentFilter || a.refused:
+		stop = llm.StopRefusal
 	case len(msg.Calls) > 0:
 		stop = llm.StopToolUse
 	}

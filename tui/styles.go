@@ -107,7 +107,7 @@ func ToolLine(st Styles, r agent.ToolResult, width int) string {
 	build := func(rest string) string {
 		line := st.Dim.Render(toolPrefix) + style.Render(head)
 		if rest != "" {
-			line += " " + rest
+			line += " " + st.Dim.Render(rest)
 		}
 		return line + st.Dim.Render(" -> ") + outcome
 	}

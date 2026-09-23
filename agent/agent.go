@@ -26,6 +26,8 @@ const Cancelled = "cancelled by the user"
 // ErrContextFull means the last request came within 5% of the model's window.
 var ErrContextFull = errors.New("context window is full; start a new conversation")
 
+var errRefused = errors.New("the model refused the request")
+
 // ContextFull reports whether err means the conversation no longer fits, whether gila refused
 // the request or the provider did.
 func ContextFull(err error) bool {
@@ -195,16 +197,26 @@ func (a *Agent) Run(ctx context.Context, prompt string, emit func(Event)) (Resul
 		res.Text = resp.Message.Text
 		emit(Response{Text: resp.Message.Text, Usage: resp.Usage, Stop: resp.Stop})
 
-		if len(msg.Calls) == 0 {
-			if resp.Stop == llm.StopRefusal {
-				return res, errors.New("the model refused the request")
-			}
-			return res, nil
+		// Calls in a cut-off or refused response are answered with this error instead of run.
+		var skip error
+		switch resp.Stop {
+		case llm.StopMaxTokens:
+			skip = errors.New("response was cut off at the output limit; retry with a smaller call")
+		case llm.StopRefusal:
+			skip = errRefused
 		}
-		results, err := a.runTools(ctx, msg.Calls, resp.Stop == llm.StopMaxTokens, emit)
-		a.History = append(a.History, llm.Message{Role: llm.Tool, Results: results})
-		if err != nil {
-			return res, err
+		if len(msg.Calls) > 0 {
+			results, err := a.runTools(ctx, msg.Calls, skip, emit)
+			a.History = append(a.History, llm.Message{Role: llm.Tool, Results: results})
+			if err != nil {
+				return res, err
+			}
+		}
+		switch {
+		case resp.Stop == llm.StopRefusal:
+			return res, errRefused
+		case len(msg.Calls) == 0:
+			return res, nil
 		}
 	}
 	return res, fmt.Errorf("stopped after %d round-trips; raise --max-turns or continue with a new prompt", a.MaxTurns)
@@ -224,7 +236,7 @@ func (a *Agent) request() llm.Request {
 
 // runTools runs calls in order. Every call gets a result, even after a cancel, because the next
 // request must answer each one.
-func (a *Agent) runTools(ctx context.Context, calls []llm.ToolCall, truncated bool, emit func(Event)) ([]llm.ToolResult, error) {
+func (a *Agent) runTools(ctx context.Context, calls []llm.ToolCall, skip error, emit func(Event)) ([]llm.ToolResult, error) {
 	results := make([]llm.ToolResult, 0, len(calls))
 	for _, c := range calls {
 		if ctx.Err() != nil {
@@ -244,9 +256,8 @@ func (a *Agent) runTools(ctx context.Context, calls []llm.ToolCall, truncated bo
 		var out tool.Result
 		var err error
 		switch {
-		case truncated:
-			// The response hit max_tokens, so the last call's arguments may be cut off.
-			err = errors.New("response was cut off at the output limit; retry with a smaller call")
+		case skip != nil:
+			err = skip
 		case t == nil:
 			err = fmt.Errorf("unknown tool %q", c.Name)
 		default:
