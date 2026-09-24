@@ -1,4 +1,4 @@
-// Package tui is gila's REPL. It runs inline, not on the alternate screen: finished output goes
+// Package tui is gilda's REPL. It runs inline, not on the alternate screen: finished output goes
 // into the terminal's own scrollback, and only the streaming line, the input and the status bar
 // are redrawn.
 package tui
@@ -20,12 +20,12 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/app"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/permission"
-	"github.com/shakfu/gila/prompt"
-	"github.com/shakfu/gila/state"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/app"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/permission"
+	"github.com/shakfu/gilda/prompt"
+	"github.com/shakfu/gilda/state"
 )
 
 type Options struct {
@@ -131,7 +131,7 @@ func newModel(ctx context.Context, a *app.App, opts Options) *model {
 	in := textarea.New()
 	in.ShowLineNumbers = false
 	in.Prompt = "> "
-	in.Placeholder = "Ask gila. Enter sends, Shift-Enter or Ctrl-J adds a line, /help lists commands."
+	in.Placeholder = "Ask gilda. Enter sends, Shift-Enter or Ctrl-J adds a line, /help lists commands."
 	in.CharLimit = 0
 	in.DynamicHeight = true
 	in.MinHeight = 1
@@ -493,7 +493,7 @@ func (m *model) finish(d doneMsg) {
 }
 
 func (m *model) banner(warns []error) {
-	m.out(m.st.Banner.Render("gila "+m.opts.Version) + "  " + m.st.Model.Render(m.provider+"/"+shortModel(m.modelID)) +
+	m.out(m.st.Banner.Render("gilda "+m.opts.Version) + "  " + m.st.Model.Render(m.provider+"/"+shortModel(m.modelID)) +
 		m.st.Dim.Render(m.windowNote()+"  "+shortPath(cwd())+"  permissions: "+string(m.app.Mode())))
 	for _, p := range prompt.AgentsFiles(cwd(), m.app.ConfigDir()) {
 		m.out(m.st.Dim.Render("  instructions: " + shortPath(p)))

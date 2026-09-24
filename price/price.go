@@ -1,7 +1,7 @@
 // Package price estimates cost and context windows from OpenRouter's public model list.
 //
 // OpenAI reports neither a cost nor a context window, and Anthropic no cost. OpenRouter lists
-// their models at the vendors' rates and needs no key to do so. A table kept in gila would go
+// their models at the vendors' rates and needs no key to do so. A table kept in gilda would go
 // stale.
 package price
 
@@ -17,9 +17,9 @@ import (
 
 	"github.com/OpenRouterTeam/go-sdk/models/components"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/openrouter"
-	"github.com/shakfu/gila/state"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/openrouter"
+	"github.com/shakfu/gilda/state"
 )
 
 // USD per token.

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 type Read struct{ Env }

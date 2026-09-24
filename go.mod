@@ -1,4 +1,4 @@
-module github.com/shakfu/gila
+module github.com/shakfu/gilda
 
 go 1.27.1
 

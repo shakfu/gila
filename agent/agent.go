@@ -8,9 +8,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/price"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/price"
+	"github.com/shakfu/gilda/tool"
 )
 
 // maxCut is the default bound on resends of one round-trip whose stream ended early.
@@ -28,7 +28,7 @@ var ErrContextFull = errors.New("context window is full; start a new conversatio
 
 var errRefused = errors.New("the model refused the request")
 
-// ContextFull reports whether err means the conversation no longer fits, whether gila refused
+// ContextFull reports whether err means the conversation no longer fits, whether gilda refused
 // the request or the provider did.
 func ContextFull(err error) bool {
 	return errors.Is(err, ErrContextFull) || errors.Is(err, llm.ErrContext)

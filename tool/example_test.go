@@ -7,7 +7,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/tool"
 )
 
 // A read-only tool runs without asking in every permission mode; a modifying tool that names

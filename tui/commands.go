@@ -7,9 +7,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/shakfu/gila/permission"
-	"github.com/shakfu/gila/price"
-	"github.com/shakfu/gila/provider"
+	"github.com/shakfu/gilda/permission"
+	"github.com/shakfu/gilda/price"
+	"github.com/shakfu/gilda/provider"
 )
 
 type command struct {

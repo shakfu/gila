@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/permission"
-	"github.com/shakfu/gila/state"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/permission"
+	"github.com/shakfu/gilda/state"
+	"github.com/shakfu/gilda/tool"
 )
 
 func TestSplitModel(t *testing.T) {

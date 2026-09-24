@@ -9,7 +9,7 @@ import (
 
 	"github.com/BurntSushi/toml"
 
-	"github.com/shakfu/gila/permission"
+	"github.com/shakfu/gilda/permission"
 )
 
 // SettingsFile is the name of the user's settings in the config directory.
@@ -36,9 +36,9 @@ const SettingsFile = "settings.toml"
 //	[prices]
 //	fetch = false
 //
-// The mode applies when neither --permissions nor GILA_PERMISSIONS sets one; max_tokens,
+// The mode applies when neither --permissions nor GILDA_PERMISSIONS sets one; max_tokens,
 // max_turns and context apply when their flags are not given. The patterns add to the built-in
-// ones and cannot lift them. A key left out takes gila's default.
+// ones and cannot lift them. A key left out takes gilda's default.
 type Settings struct {
 	Permissions Permissions `toml:"permissions"`
 	Agent       Agent       `toml:"agent"`
@@ -64,7 +64,7 @@ type Tools struct {
 	BashMaxTimeout *int `toml:"bash_max_timeout"`
 }
 
-// Prompt says what goes into the system prompt besides gila's own text. Nil means on.
+// Prompt says what goes into the system prompt besides gilda's own text. Nil means on.
 type Prompt struct {
 	AgentsMD *bool `toml:"agents_md"`
 	Skills   *bool `toml:"skills"`

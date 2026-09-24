@@ -1,4 +1,4 @@
-// Package state keeps what gila remembers between runs: the last provider, the last model per
+// Package state keeps what gilda remembers between runs: the last provider, the last model per
 // provider, and REPL history. Directories are 0700 and files 0600, because prompts are stored
 // verbatim.
 package state
@@ -11,7 +11,7 @@ import (
 	"strings"
 )
 
-const app = "gila"
+const app = "gilda"
 
 func xdg(env, fallback string) string {
 	if d := os.Getenv(env); d != "" && filepath.IsAbs(d) {
@@ -67,7 +67,7 @@ func (s State) Save() error {
 // Dir is where the state is saved; the REPL keeps its history there too.
 func (s State) Dir() string { return s.dir }
 
-// WriteFile replaces p through a temporary file of its own, so two gila instances saving at
+// WriteFile replaces p through a temporary file of its own, so two gilda instances saving at
 // once never rename each other's half-written file into place. The file is 0600.
 func WriteFile(p string, data []byte) error {
 	if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {

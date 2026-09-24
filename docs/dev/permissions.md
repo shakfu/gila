@@ -1,6 +1,6 @@
 # Permissions and sandboxing
 
-How gila's permission modes compare with Antigravity CLI's, and a design for a `bash` sandbox. Written 2026-09-23 against gila 0.1.0. Nothing below is implemented.
+How gilda's permission modes compare with Antigravity CLI's, and a design for a `bash` sandbox. Written 2026-09-23 against gilda 0.1.0. Nothing below is implemented.
 
 ## Antigravity's model
 
@@ -14,11 +14,11 @@ From the Antigravity CLI documentation, `~/.gemini/antigravity-cli/settings.json
 
 A second key, `enableTerminalSandbox`, turns the sandbox on. The excerpt does not say what "risky" means, or how `strict` differs from `request-review`. Both are open below.
 
-## Mapping onto gila
+## Mapping onto gilda
 
-| Antigravity | Nearest gila | Gap |
+| Antigravity | Nearest gilda | Gap |
 |-|-|-|
-| `request-review` | `ask` | gila also runs `commands` and `hosts` allowlist entries without asking |
+| `request-review` | `ask` | gilda also runs `commands` and `hosts` allowlist entries without asking |
 | `strict` | `ask` with empty allowlists | an embedding app's `Options.Rules` can still add allowlist entries |
 | `proceed-in-sandbox` | `auto` | `auto` runs `bash` unconfined |
 | none | `all`, `read-only` | |
@@ -88,8 +88,8 @@ Go has no `pre_exec` hook, so minima's approach (restrict the child between `for
 
 | Approach | Cost |
 |-|-|
-| Re-exec: `bash.go` spawns `/proc/self/exe __sandbox <policy> -- bash -c CMD`; the helper locks its OS thread, sets `PR_SET_NO_NEW_PRIVS`, calls `landlock_restrict_self`, then `syscall.Exec`s bash | one extra `exec` per call; gila's own process stays unconfined |
-| Restrict gila's own process | rejected: gila writes `state.json`, `history` and the price cache outside the root |
+| Re-exec: `bash.go` spawns `/proc/self/exe __sandbox <policy> -- bash -c CMD`; the helper locks its OS thread, sets `PR_SET_NO_NEW_PRIVS`, calls `landlock_restrict_self`, then `syscall.Exec`s bash | one extra `exec` per call; gilda's own process stays unconfined |
+| Restrict gilda's own process | rejected: gilda writes `state.json`, `history` and the price cache outside the root |
 | `bwrap` | minima rejected it: fails under Docker's default seccomp and Ubuntu 24.04's user-namespace restriction |
 
 Re-exec is the recommendation. `syscall.Exec` keeps the PID, so `Setpgid` and the group kill in `tool/bash.go:77` still work. Landlock applies per thread, so the helper must restrict and `exec` from the same locked thread (inference from the kernel docs, not tested in Go).
@@ -100,11 +100,11 @@ ABI floor: 3 (kernel 6.2), as in minima. ABI 1 blocks cross-directory `rename`, 
 
 ### macOS: Seatbelt
 
-Prefix the argument vector with `/usr/bin/sandbox-exec -p '<profile>'`. No re-exec is needed. `sandbox-exec` is deprecated but still present; minima's doc cites the status. minima also denies preference writes, `open` and signals outside the sandbox; gila should copy that list.
+Prefix the argument vector with `/usr/bin/sandbox-exec -p '<profile>'`. No re-exec is needed. `sandbox-exec` is deprecated but still present; minima's doc cites the status. minima also denies preference writes, `open` and signals outside the sandbox; gilda should copy that list.
 
 ### `write` and `edit`
 
-They run in gila's process, which stays unconfined. The existing checks in `permission.writes` already hold them to the root in `auto`. Under the sandbox they should refuse, not ask, a path outside the root plus `writable`, so both tools and `bash` share one boundary.
+They run in gilda's process, which stays unconfined. The existing checks in `permission.writes` already hold them to the root in `auto`. Under the sandbox they should refuse, not ask, a path outside the root plus `writable`, so both tools and `bash` share one boundary.
 
 ### Rules that do not transfer to `bash`
 
@@ -121,7 +121,7 @@ Enforcing `protected` and `secrets` on macOS only makes one setting mean differe
 
 ### Escaping the sandbox
 
-This is what "risky commands prompt" needs to mean. Classifying a command string as safe does not work: minima's doc shows `eval`, `$IFS` and substitution defeating any text check, and gila's `permission/command.go` refuses to match those forms for the same reason.
+This is what "risky commands prompt" needs to mean. Classifying a command string as safe does not work: minima's doc shows `eval`, `$IFS` and substitution defeating any text check, and gilda's `permission/command.go` refuses to match those forms for the same reason.
 
 Recommendation: run every command confined. When one needs more, the model sets a `bash` argument such as `unsandboxed: true`, and that call asks.
 
@@ -135,7 +135,7 @@ The argument should be in the schema whether or not the sandbox is on. `/permiss
 
 ### Degradation
 
-If the sandbox cannot be installed (old kernel, Landlock not in the boot `lsm=` list, `sandbox-exec` missing), gila refuses to start. Run one confined command at startup, as minima's `preflight` does, so the failure comes before the first turn. A mid-session `/permissions` switch runs the same check and refuses the switch.
+If the sandbox cannot be installed (old kernel, Landlock not in the boot `lsm=` list, `sandbox-exec` missing), gilda refuses to start. Run one confined command at startup, as minima's `preflight` does, so the failure comes before the first turn. A mid-session `/permissions` switch runs the same check and refuses the switch.
 
 ### Network
 
@@ -154,7 +154,7 @@ Plus `--sandbox` and `--writable DIR`. `writable` without `sandbox` is an error,
 
 ## Cost
 
-Estimated, not measured. minima estimated 200-260 lines for both backends in Rust. gila adds the `__sandbox` helper and the escape argument, so roughly 300. The test suite is the larger cost: minima's `scripts/test_sandbox.py` checks the disk after real escape attempts (redirect, `cd ..`, symlink, background job), and runs on both platforms in CI.
+Estimated, not measured. minima estimated 200-260 lines for both backends in Rust. gilda adds the `__sandbox` helper and the escape argument, so roughly 300. The test suite is the larger cost: minima's `scripts/test_sandbox.py` checks the disk after real escape attempts (redirect, `cd ..`, symlink, background job), and runs on both platforms in CI.
 
 ## Open questions
 

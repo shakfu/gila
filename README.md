@@ -1,24 +1,24 @@
-# gila
+# gilda
 
 A coding agent for the terminal, and a Go library for building one. It talks to each provider through that provider's own SDK: [anthropic-sdk-go](https://github.com/anthropics/anthropic-sdk-go), [openai-go](https://github.com/openai/openai-go) and the [OpenRouter Go SDK](https://github.com/OpenRouterTeam/go-sdk).
 
-**IMPORTANT:** by default gila runs `bash`, and writes inside the working directory, **without asking**. It asks before writes elsewhere and before touching secrets; `--permissions` changes what asks. See [Permissions](#permissions). No mode is a sandbox: whenever `bash` runs, it can read and write anything the user can. Run gila in a container or a disposable checkout when the prompt or the repository is untrusted.
+**IMPORTANT:** by default gilda runs `bash`, and writes inside the working directory, **without asking**. It asks before writes elsewhere and before touching secrets; `--permissions` changes what asks. See [Permissions](#permissions). No mode is a sandbox: whenever `bash` runs, it can read and write anything the user can. Run gilda in a container or a disposable checkout when the prompt or the repository is untrusted.
 
 ## Install
 
 ```sh
-make install    # builds bin/gila and copies it to ~/.local/bin
+make install    # builds bin/gilda and copies it to ~/.local/bin
 ```
 
 Requires Go 1.27. Unix only: `bash` relies on process groups.
 
 ```sh
-% gila -h
-gila is a coding agent. Without -p it starts a REPL; with -p it answers one
+% gilda -h
+gilda is a coding agent. Without -p it starts a REPL; with -p it answers one
 prompt and exits.
 
 Usage:
-  gila [flags]
+  gilda [flags]
 
 Flags:
   -P, --provider ID        ID: anthropic, openai, openrouter, llamacpp,
@@ -71,7 +71,7 @@ Selection:
 
 - Provider and model are remembered only after a turn streams, so a mistyped model is not reused.
 
-`compat` covers any other OpenAI-compatible Chat Completions server: LM Studio, vLLM, llama-swap, a machine on the LAN, or a hosted endpoint. For example, `gila -P compat --base-url http://localhost:1234/v1`. Like the local presets, it is never chosen automatically and gets no cost estimate.
+`compat` covers any other OpenAI-compatible Chat Completions server: LM Studio, vLLM, llama-swap, a machine on the LAN, or a hosted endpoint. For example, `gilda -P compat --base-url http://localhost:1234/v1`. Like the local presets, it is never chosen automatically and gets no cost estimate.
 
 Start llama-server with `--jinja` so tool calls work.
 
@@ -83,9 +83,9 @@ Start llama-server with `--jinja` so tool calls work.
 
 - **Headless:** `-p` streams the answer to stdout and everything else to stderr. `--json` prints one record per line: `start`, `turn`, `tool_call`, `tool_result` and `retry`, then a final `result` with `outcome`, `text`, `error`, `turns`, `usage` and `context_used`. Exit status 0 when complete, 1 on error, 2 on a usage error, 130 when cancelled.
 
-- **Network:** a response streams with no overall timeout, so a long answer is never cut off; Esc or Ctrl-C ends a stalled one. When a provider's SDK retries a request, the REPL's status bar and a `[retry] 1 after 503 Service Unavailable` line say why, as do `-p`'s stderr and a `retry` record in `--json`. Anthropic and OpenAI retry up to 4 times, the local providers twice, OpenRouter for up to a minute. A response cut off mid-stream is sent again by gila itself, up to twice in a row; the cut response never enters the history. `GILA_LOG=FILE` records each request's endpoint and status and the raw response stream, never request bodies or headers.
+- **Network:** a response streams with no overall timeout, so a long answer is never cut off; Esc or Ctrl-C ends a stalled one. When a provider's SDK retries a request, the REPL's status bar and a `[retry] 1 after 503 Service Unavailable` line say why, as do `-p`'s stderr and a `retry` record in `--json`. Anthropic and OpenAI retry up to 4 times, the local providers twice, OpenRouter for up to a minute. A response cut off mid-stream is sent again by gilda itself, up to twice in a row; the cut response never enters the history. `GILDA_LOG=FILE` records each request's endpoint and status and the raw response stream, never request bodies or headers.
 
-- **Cost:** OpenRouter reports each request's cost. For `anthropic` and `openai`, gila estimates it from OpenRouter's public price list, marked `~`. It prices cached input at the cache rate and applies long-prompt tiers. The list is fetched without a key, at most once a day. `--base-url` turns estimates off, since a gateway need not bill at the vendor's rates. Local servers report no cost.
+- **Cost:** OpenRouter reports each request's cost. For `anthropic` and `openai`, gilda estimates it from OpenRouter's public price list, marked `~`. It prices cached input at the cache rate and applies long-prompt tiers. The list is fetched without a key, at most once a day. `--base-url` turns estimates off, since a gateway need not bill at the vendor's rates. Local servers report no cost.
 
 - **Token use:**
 
@@ -113,7 +113,7 @@ Start llama-server with `--jinja` so tool calls work.
 
 ### Permissions
 
-The mode sets what runs without asking. The first that is set wins: `--permissions`, `GILA_PERMISSIONS`, `mode` in `settings.toml`, then `auto`. `/permissions` changes it for the rest of a REPL session.
+The mode sets what runs without asking. The first that is set wins: `--permissions`, `GILDA_PERMISSIONS`, `mode` in `settings.toml`, then `auto`. `/permissions` changes it for the rest of a REPL session.
 
 | Mode | Runs without asking | Asks before | Refuses |
 |-|-|-|-|
@@ -174,7 +174,7 @@ Allowlists loosen rather than protect, so an entry from any source allows a comm
 #### settings.toml
 
 ```toml
-# ~/.config/gila/settings.toml
+# ~/.config/gilda/settings.toml
 [permissions]
 mode = "ask"
 secrets = ["*.pem", "!public.pem", "secrets/*"]
@@ -186,7 +186,7 @@ diff = false
 
 The REPL shows the unified diff of an `edit` or `write` below its approval prompt; `diff = false` turns this off. A `write` over a binary file or one over 1 MiB gets a one-line summary instead. A tool shows one by implementing `tool.Previewer`.
 
-An unknown key or a malformed entry stops gila with the file's path, so a typo never drops a protection silently.
+An unknown key or a malformed entry stops gilda with the file's path, so a typo never drops a protection silently.
 
 #### Limits
 
@@ -233,7 +233,7 @@ fetch = true           # OpenRouter's price list, fetched once a day
 | `stream_retries` | tokens: each resend sends the whole request again, mostly as cache reads |
 | `output_cap`, `read_lines`, `read_line_bytes` | tokens: each result stays in the history and is sent again with every later request |
 | `agents_md`, `skills` | tokens on every request |
-| `context` | when gila stops a conversation as full, at 95% |
+| `context` | when gilda stops a conversation as full, at 95% |
 | `bash_timeout`, `bash_max_timeout` | wall-clock time |
 | `diff_max_bytes` | local I/O when approving a write |
 | `fetch` | one request at startup; off also drops cost estimates and, for OpenAI, the context window |
@@ -283,12 +283,12 @@ The CLI is a thin layer over packages that can be used on their own:
 
 ```go
 import (
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/anthropic"
-	"github.com/shakfu/gila/permission"
-	"github.com/shakfu/gila/prompt"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/anthropic"
+	"github.com/shakfu/gilda/permission"
+	"github.com/shakfu/gilda/prompt"
+	"github.com/shakfu/gilda/tool"
 )
 
 jobs := &tool.Jobs{}
@@ -341,14 +341,14 @@ Importing `agent`, `app` or the adapters links no TUI or CLI dependency.
 ## Build
 
 ```sh
-make            # bin/gila
+make            # bin/gilda
 make check      # gofmt, go vet, tests under -race; the full gate
 make run        # one-shot against the mock provider
 make repl       # REPL against the mock provider
 make help       # every target
 ```
 
-Adapter tests run each SDK against a local server that replays server-sent events. They check the request gila sends (cache markers, tools, reasoning replay) and the parsing of the stream, with no key or network. `cmd/gila` tests build the binary and check exit codes and JSON records.
+Adapter tests run each SDK against a local server that replays server-sent events. They check the request gilda sends (cache markers, tools, reasoning replay) and the parsing of the stream, with no key or network. `cmd/gilda` tests build the binary and check exit codes and JSON records.
 
 A mock script is a JSON array of responses, one per provider round-trip: `{"text", "reasoning", "calls": [{"name", "arguments"}], "usage", "stop", "error"}`. See `mock/`.
 
@@ -358,22 +358,22 @@ The binary is about 40 MB, mostly the three SDKs; startup takes about 10 ms. See
 
 | Path | Holds |
 |-|-|
-| `$XDG_CONFIG_HOME/gila/AGENTS.md`, `skills/` | your instructions and skills |
-| `$XDG_CONFIG_HOME/gila/settings.toml` | permission mode, secrets, protected paths, command and host allowlists, approval diffs, limits |
-| `$XDG_STATE_HOME/gila/state.json` | last provider, model per provider, effort |
-| `$XDG_STATE_HOME/gila/history` | REPL history, verbatim, mode 0600 |
-| `$XDG_CACHE_HOME/gila/openrouter-models.json` | the price list |
+| `$XDG_CONFIG_HOME/gilda/AGENTS.md`, `skills/` | your instructions and skills |
+| `$XDG_CONFIG_HOME/gilda/settings.toml` | permission mode, secrets, protected paths, command and host allowlists, approval diffs, limits |
+| `$XDG_STATE_HOME/gilda/state.json` | last provider, model per provider, effort |
+| `$XDG_STATE_HOME/gilda/history` | REPL history, verbatim, mode 0600 |
+| `$XDG_CACHE_HOME/gilda/openrouter-models.json` | the price list |
 
 Unset XDG variables fall back to `~/.config`, `~/.local/state` and `~/.cache`.
 
 | Variable | Meaning |
 |-|-|
-| `GILA_PROVIDER`, `GILA_MODEL` | defaults for `-P` and `-m` |
-| `GILA_BASE_URL`, `GILA_API_KEY` | defaults for `--base-url` and `--api-key` |
-| `GILA_PERMISSIONS` | default for `--permissions`, ahead of `settings.toml` |
+| `GILDA_PROVIDER`, `GILDA_MODEL` | defaults for `-P` and `-m` |
+| `GILDA_BASE_URL`, `GILDA_API_KEY` | defaults for `--base-url` and `--api-key` |
+| `GILDA_PERMISSIONS` | default for `--permissions`, ahead of `settings.toml` |
 | `LLAMACPP_BASE_URL`, `OLLAMA_BASE_URL`, `COMPAT_BASE_URL` | local endpoints |
 | `COMPAT_API_KEY` | optional key for `compat` |
-| `GILA_LOG` | file to append each request's endpoint and status and the raw response stream to |
+| `GILDA_LOG` | file to append each request's endpoint and status and the raw response stream to |
 | `NO_COLOR` | any value turns colour off |
 
 ## Licence

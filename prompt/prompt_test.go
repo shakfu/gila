@@ -41,7 +41,7 @@ func TestAgentsFilesRunFromUserToNearest(t *testing.T) {
 	}
 
 	p := Build(sub, cfg, Options{})
-	if !strings.HasPrefix(p, "You are gila") || !strings.Contains(p, "- Working directory: "+sub) ||
+	if !strings.HasPrefix(p, "You are gilda") || !strings.Contains(p, "- Working directory: "+sub) ||
 		!strings.Contains(p, runtime.GOOS) || !strings.Contains(p, "- Command shell: bash") {
 		t.Fatalf("environment missing:\n%s", p)
 	}

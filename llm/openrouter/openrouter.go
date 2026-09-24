@@ -21,7 +21,7 @@ import (
 	"github.com/OpenRouterTeam/go-sdk/optionalnullable"
 	"github.com/OpenRouterTeam/go-sdk/retry"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 type Provider struct {
@@ -32,7 +32,7 @@ type Provider struct {
 func New(name, key, baseURL string) *Provider {
 	opts := []sdk.SDKOption{
 		sdk.WithSecurity(key),
-		sdk.WithXTitle("gila"),
+		sdk.WithXTitle("gilda"),
 		sdk.WithClient(streamClient),
 		// The SDK's default backs off on 5xx for up to an hour, which would hang a -p run.
 		sdk.WithRetryConfig(retry.Config{

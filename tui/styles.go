@@ -11,10 +11,10 @@ import (
 	"github.com/charmbracelet/colorprofile"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/app"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/price"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/app"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/price"
 )
 
 // Styles is the palette. Output is ASCII; colour carries the structure.

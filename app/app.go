@@ -15,15 +15,15 @@ import (
 	"sync"
 	"time"
 
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/mock"
-	"github.com/shakfu/gila/permission"
-	"github.com/shakfu/gila/price"
-	"github.com/shakfu/gila/prompt"
-	"github.com/shakfu/gila/provider"
-	"github.com/shakfu/gila/state"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/mock"
+	"github.com/shakfu/gilda/permission"
+	"github.com/shakfu/gilda/price"
+	"github.com/shakfu/gilda/prompt"
+	"github.com/shakfu/gilda/provider"
+	"github.com/shakfu/gilda/state"
+	"github.com/shakfu/gilda/tool"
 )
 
 type Options struct {
@@ -43,7 +43,7 @@ type Options struct {
 	Root      string
 	// Refresh refetches the price list, ignoring its daily cache.
 	Refresh bool
-	// StateDir, CacheDir and ConfigDir replace gila's XDG directories when set: saved state and
+	// StateDir, CacheDir and ConfigDir replace gilda's XDG directories when set: saved state and
 	// history, the price list, and the user's AGENTS.md and skills. An embedding app sets them
 	// so it does not share the CLI's.
 	StateDir, CacheDir, ConfigDir string
@@ -517,5 +517,5 @@ func SplitModel(s string) (string, string, bool) {
 func newSessionID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b)
-	return "gila-" + hex.EncodeToString(b)
+	return "gilda-" + hex.EncodeToString(b)
 }

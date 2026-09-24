@@ -1,4 +1,4 @@
-// Command gila is a coding agent for the terminal.
+// Command gilda is a coding agent for the terminal.
 package main
 
 import (
@@ -16,11 +16,11 @@ import (
 	"github.com/spf13/pflag"
 	"golang.org/x/term"
 
-	"github.com/shakfu/gila/app"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/permission"
-	"github.com/shakfu/gila/provider"
-	"github.com/shakfu/gila/tui"
+	"github.com/shakfu/gilda/app"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/permission"
+	"github.com/shakfu/gilda/provider"
+	"github.com/shakfu/gilda/tui"
 )
 
 var version = "0.1.0"
@@ -42,9 +42,9 @@ func (e exitError) Error() string { return fmt.Sprintf("exit %d", int(e)) }
 func main() {
 	var f flags
 	cmd := &cobra.Command{
-		Use:   "gila",
+		Use:   "gilda",
 		Short: "A coding agent for the terminal",
-		Long: "gila is a coding agent. Without -p it starts a REPL; with -p it answers one\n" +
+		Long: "gilda is a coding agent. Without -p it starts a REPL; with -p it answers one\n" +
 			"prompt and exits.",
 		Version:       version,
 		Args:          cobra.NoArgs,
@@ -71,18 +71,18 @@ func main() {
 			return nil
 		},
 	}
-	cmd.SetVersionTemplate("gila {{.Version}}\n")
+	cmd.SetVersionTemplate("gilda {{.Version}}\n")
 	fl := cmd.Flags()
 	// A backquoted word in a usage names the flag's value in --help.
-	fl.StringVarP(&f.Provider, "provider", "P", os.Getenv("GILA_PROVIDER"),
+	fl.StringVarP(&f.Provider, "provider", "P", os.Getenv("GILDA_PROVIDER"),
 		"`ID`: "+strings.Join(provider.IDs(), ", "))
-	fl.StringVarP(&f.Model, "model", "m", os.Getenv("GILA_MODEL"), "model `ID`, or PROVIDER:ID")
+	fl.StringVarP(&f.Model, "model", "m", os.Getenv("GILDA_MODEL"), "model `ID`, or PROVIDER:ID")
 	fl.StringVarP(&f.prompt, "prompt", "p", "", "answer one `PROMPT` and exit; - reads stdin")
 	fl.StringVarP(&f.Root, "root", "C", "", "working `DIR` (default: the current one)")
-	fl.StringVar(&f.BaseURL, "base-url", os.Getenv("GILA_BASE_URL"),
+	fl.StringVar(&f.BaseURL, "base-url", os.Getenv("GILDA_BASE_URL"),
 		"provider endpoint `URL`; needs --provider; turns off cost estimates")
-	fl.StringVar(&f.APIKey, "api-key", os.Getenv("GILA_API_KEY"), "provider `KEY`; needs --provider")
-	fl.StringVar(&f.Permissions, "permissions", os.Getenv("GILA_PERMISSIONS"),
+	fl.StringVar(&f.APIKey, "api-key", os.Getenv("GILDA_API_KEY"), "provider `KEY`; needs --provider")
+	fl.StringVar(&f.Permissions, "permissions", os.Getenv("GILDA_PERMISSIONS"),
 		"`MODE` for what runs without asking: auto, ask, all, read-only "+
 			"(default: mode in settings.toml, else auto). auto asks before "+
 			"touching secrets and writing outside the root or to protected paths")
@@ -111,7 +111,7 @@ func main() {
 	case errors.As(err, &code):
 		os.Exit(int(code))
 	case err != nil:
-		fmt.Fprintln(os.Stderr, "gila:", err)
+		fmt.Fprintln(os.Stderr, "gilda:", err)
 		os.Exit(2)
 	}
 }
@@ -119,7 +119,7 @@ func main() {
 func run(f flags) int {
 	if f.Root != "" {
 		if err := os.Chdir(f.Root); err != nil {
-			fmt.Fprintln(os.Stderr, "gila:", err)
+			fmt.Fprintln(os.Stderr, "gilda:", err)
 			return 2
 		}
 		f.Root, _ = os.Getwd()
@@ -127,7 +127,7 @@ func run(f flags) int {
 	if f.prompt == "-" {
 		data, err := io.ReadAll(os.Stdin)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "gila:", err)
+			fmt.Fprintln(os.Stderr, "gilda:", err)
 			return 1
 		}
 		f.prompt = string(data)
@@ -138,14 +138,14 @@ func run(f flags) int {
 			writeFailure(os.Stdout, err)
 			return 2
 		}
-		fmt.Fprintln(os.Stderr, "gila:", err)
+		fmt.Fprintln(os.Stderr, "gilda:", err)
 		return 2
 	}
 
-	if path := os.Getenv("GILA_LOG"); path != "" {
+	if path := os.Getenv("GILDA_LOG"); path != "" {
 		logFile, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
 		if err != nil {
-			fmt.Fprintln(os.Stderr, "gila:", err)
+			fmt.Fprintln(os.Stderr, "gilda:", err)
 			return 2
 		}
 		defer logFile.Close()
@@ -157,7 +157,7 @@ func run(f flags) int {
 		if f.json {
 			return writeFailure(os.Stdout, err)
 		}
-		fmt.Fprintln(os.Stderr, "gila:", err)
+		fmt.Fprintln(os.Stderr, "gilda:", err)
 		return 1
 	}
 	defer a.Close()
@@ -188,11 +188,11 @@ func run(f flags) int {
 		return bySignal(headless(ctx, a, f.prompt, f.json, color))
 	}
 	if !term.IsTerminal(int(os.Stdin.Fd())) || !term.IsTerminal(int(os.Stdout.Fd())) {
-		fmt.Fprintln(os.Stderr, "gila: the REPL needs a terminal; pass -p for a one-shot run")
+		fmt.Fprintln(os.Stderr, "gilda: the REPL needs a terminal; pass -p for a one-shot run")
 		return 2
 	}
 	if err := tui.Run(ctx, a, tui.Options{Version: version, Color: color}); err != nil && got.Load() == 0 {
-		fmt.Fprintln(os.Stderr, "gila:", err)
+		fmt.Fprintln(os.Stderr, "gilda:", err)
 		return 1
 	}
 	return bySignal(0)

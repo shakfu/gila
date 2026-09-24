@@ -14,7 +14,7 @@ import (
 	"strings"
 )
 
-const base = `You are gila, a coding agent. Use the tools to inspect and change files. Be terse. State what you did; do not narrate what you are about to do.`
+const base = `You are gilda, a coding agent. Use the tools to inspect and change files. Be terse. State what you did; do not narrate what you are about to do.`
 
 // AgentsFile follows the cross-tool convention at https://agents.md.
 const AgentsFile = "AGENTS.md"
@@ -111,7 +111,7 @@ type Skill struct {
 }
 
 // Skills returns every <dir>/<name>/SKILL.md whose frontmatter has a description and fits the
-// cap, sorted by path. The frontmatter is passed on unparsed: the model reads YAML, and gila
+// cap, sorted by path. The frontmatter is passed on unparsed: the model reads YAML, and gilda
 // needs no field from it.
 func Skills(dir string) []Skill {
 	entries, err := os.ReadDir(dir)

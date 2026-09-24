@@ -8,9 +8,9 @@
 
 - The REPL shows the unified diff of an `edit` or `write` when it asks to approve it; `diff = false` under `[permissions]` in `settings.toml` turns this off. An edit's diff comes from the same code as the edit, so it covers the CRLF rewrite and `replace_all`. A write diffs against the file it replaces, or `/dev/null` for a new file; a binary file or one over 1 MiB gets a one-line summary, since `write` itself never reads the old file. Tools opt in through `tool.Previewer`.
 
-- Permission modes: `--permissions auto|ask|all|read-only`, `GILA_PERMISSIONS`, or `/permissions` in the REPL. The REPL asks inline, `-p` asks on the terminal, and `--json` refuses what would ask. A refused or declined call goes back to the model with the reason. No mode confines `bash`; only a kernel sandbox could.
+- Permission modes: `--permissions auto|ask|all|read-only`, `GILDA_PERMISSIONS`, or `/permissions` in the REPL. The REPL asks inline, `-p` asks on the terminal, and `--json` refuses what would ask. A refused or declined call goes back to the model with the reason. No mode confines `bash`; only a kernel sandbox could.
 
-- `~/.config/gila/settings.toml`. Under `[permissions]`, `mode` sets the default mode, below `--permissions` and `GILA_PERMISSIONS`. `secrets` and `protected` add paths that need approval. `commands` and `hosts` allowlist `bash` commands and network hosts. An unknown key or a malformed entry stops gila, so a typo never drops a protection silently.
+- `~/.config/gilda/settings.toml`. Under `[permissions]`, `mode` sets the default mode, below `--permissions` and `GILDA_PERMISSIONS`. `secrets` and `protected` add paths that need approval. `commands` and `hosts` allowlist `bash` commands and network hosts. An unknown key or a malformed entry stops gilda, so a typo never drops a protection silently.
 
   ```toml
   [permissions]
@@ -31,13 +31,13 @@
 
 - Network tools, declared by `tool.Hosts`. A call to listed hosts that writes no files runs in every mode; an unlisted host asks, or is refused in `read-only`. A network tool is never read-only, since a fetch can carry out what the model has read. `bash` is not checked against the list.
 
-- `app.Options.Tools` adds custom tools. `tool.New` builds one from functions and declares only what its `Def` sets. Names must be unique and valid for every provider. `tool.HostOf` and `tool.Env.Abs` help implementations resolve hosts and paths as gila does.
+- `app.Options.Tools` adds custom tools. `tool.New` builds one from functions and declares only what its `Def` sets. Names must be unique and valid for every provider. `tool.HostOf` and `tool.Env.Abs` help implementations resolve hosts and paths as gilda does.
 
 - `-P compat` talks to any OpenAI-compatible Chat Completions server, such as LM Studio or vLLM, at `--base-url` or `COMPAT_BASE_URL`, with an optional `COMPAT_API_KEY`. A named provider was chosen over accepting `--base-url` alone, which would have to guess the wire format.
 
 - Retries show. The provider SDKs retry a failed request on their own and say nothing: Anthropic and OpenAI up to 4 times, the local providers twice, OpenRouter for up to a minute. The REPL's status bar and a `[retry]` line, `-p`'s stderr and a `retry` record in `--json` now report each retry and why the previous attempt failed. One HTTP transport counts the attempts each request makes, which covers all four adapters without hooking each SDK.
 
-- `GILA_LOG=FILE` appends each request's endpoint and status and the raw response stream, for diagnosing a provider. Request bodies and headers, keys among them, are never written.
+- `GILDA_LOG=FILE` appends each request's endpoint and status and the raw response stream, for diagnosing a provider. Request bodies and headers, keys among them, are never written.
 
 - For embedding apps: `agent.Config.Approve` is asked before each call, and `permission.Approver` builds one from a mode. `agent.Record` maps events to JSON-ready records. `app.Options.Keys` takes vendor keys ahead of the environment, which a GUI app does not inherit. `StateDir`, `CacheDir` and `ConfigDir` keep an app's state apart from the CLI's.
 
@@ -51,19 +51,19 @@
 
 - The approval prompt cut the call to `max(width-60, 20)` columns, so at 80 columns `$ echo harmless; rm -rf dir` showed as `$ echo harmless-l...`. The whole call is now printed above the prompt, wrapped, with control characters shown as escapes.
 
-- `--base-url` was ignored when the provider was chosen automatically, from saved state or from the keys set. Prompts went to the vendor instead of the gateway. `--base-url` and `GILA_BASE_URL` now need `--provider`, as `--api-key` does. Both checks now run after `-m PROVIDER:ID` is read, so that form also names the provider.
+- `--base-url` was ignored when the provider was chosen automatically, from saved state or from the keys set. Prompts went to the vendor instead of the gateway. `--base-url` and `GILDA_BASE_URL` now need `--provider`, as `--api-key` does. Both checks now run after `-m PROVIDER:ID` is read, so that form also names the provider.
 
 - `read` or `edit` on a FIFO waited for a writer before the regular-file check, and a cancel could not stop it. Files are now opened non-blocking and checked before reading. A `read` of a large file also stops on cancel.
 
-- A refusal or content-filtered response from OpenAI, OpenRouter or a Chat Completions server ended the prompt as a success, often as "(no response)". Only the Anthropic provider mapped refusals. The other three dropped the refusal text and treated a `content_filter` stop as a normal end. gila now shows the refusal text, answers any calls in a refused response with an error without running them, and fails the prompt. A filtered response can end mid-call, so running its calls could act on truncated arguments.
+- A refusal or content-filtered response from OpenAI, OpenRouter or a Chat Completions server ended the prompt as a success, often as "(no response)". Only the Anthropic provider mapped refusals. The other three dropped the refusal text and treated a `content_filter` stop as a normal end. gilda now shows the refusal text, answers any calls in a refused response with an error without running them, and fails the prompt. A filtered response can end mid-call, so running its calls could act on truncated arguments.
 
-- A response cut off mid-stream ended the prompt with "stream ended without a finish reason", even with the timeout below fixed. gila now sends the round-trip again, up to twice in a row, shown as a `[retry]` line; the cut response never enters the history. The SDKs retry a request that fails, not a response that stops partway. The error also names the read error that cut the stream, which the OpenRouter SDK's reader discards.
+- A response cut off mid-stream ended the prompt with "stream ended without a finish reason", even with the timeout below fixed. gilda now sends the round-trip again, up to twice in a row, shown as a `[retry]` line; the cut response never enters the history. The SDKs retry a request that fails, not a response that stops partway. The error also names the read error that cut the stream, which the OpenRouter SDK's reader discards.
 
-- OpenRouter streams longer than 60 seconds were cut off, and a prompt with a large context could time out before its first token and retry silently. The SDK's default HTTP client has a 60-second limit on the whole request, and its event reader drops the read error, so a cut stream reported only "stream ended without a finish reason". gila now gives the SDK a client that bounds connecting and waiting for headers but not the stream.
+- OpenRouter streams longer than 60 seconds were cut off, and a prompt with a large context could time out before its first token and retry silently. The SDK's default HTTP client has a 60-second limit on the whole request, and its event reader drops the read error, so a cut stream reported only "stream ended without a finish reason". gilda now gives the SDK a client that bounds connecting and waiting for headers but not the stream.
 
 - A model the provider does not list is refused, at startup and on `/model`, with a hint. `-m deepseek/deepseek-v4.1-flash` with `openai` suggests `openrouter:deepseek/deepseek-v4.1-flash`; before, it was accepted and failed on the first request. OpenAI's model list no longer offers models that cannot chat, such as `babbage-002` or `tts-1`.
 
-- A tool-call chunk from OpenRouter with a negative index crashed gila; it is now ignored.
+- A tool-call chunk from OpenRouter with a negative index crashed gilda; it is now ignored.
 
 - `-p -` with empty input and `--json` exited 1; it exits 2, like every other usage error.
 
@@ -75,7 +75,7 @@
 
 ### Changed
 
-- By default gila asks before a write outside the working directory, under version-control metadata or to a secret, and before reading a secret. 0.1.0 ran every call. With no one to ask, as under `--json`, such a call is refused. `--permissions all` restores the old behaviour.
+- By default gilda asks before a write outside the working directory, under version-control metadata or to a secret, and before reading a secret. 0.1.0 ran every call. With no one to ask, as under `--json`, such a call is refused. `--permissions all` restores the old behaviour.
 
 - `--json` `tool_call` and `tool_result` records carry a `label` field.
 
@@ -85,7 +85,7 @@
 
 - `--help` wraps at 80 columns, or the terminal width if narrower, and names flag values (`--model ID`) in place of their Go types.
 
-- The module path is `github.com/shakfu/gila`.
+- Renamed from gila to gilda: the binary, the module path (`github.com/shakfu/gilda`), the `GILDA_*` environment variables, and the `gilda` config, state and cache directories. Old names are not read. Move `~/.config/gila`, `~/.local/state/gila` and `~/.cache/gila` to their `gilda` paths to keep settings, history and saved models.
 
 ## 0.1.0
 

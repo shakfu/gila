@@ -35,7 +35,7 @@ Stripped sizes of minimal programs, 2026-09-23:
 | + OpenRouter SDK chat | 7.4 |
 | Bubble Tea v2 + textarea | 2.8 |
 
-gila is 40 MB stripped. Startup is 10 ms. A build tag per provider would cut a build to the SDKs it uses, if size becomes a constraint.
+gilda is 40 MB stripped. Startup is 10 ms. A build tag per provider would cut a build to the SDKs it uses, if size becomes a constraint.
 
 ## Bubble Tea v2 and the inline renderer
 
@@ -49,6 +49,6 @@ Each update prints through `tea.Sequence(print, listen)`. v2 runs commands in se
 
 - Compaction and session resume.
 
-- A `thinking` parameter for Anthropic. gila omits it, so each model runs its default: adaptive on Opus 5, Opus 5.5, Fable and Sonnet 5, none on Opus 4.8 and 4.7.
+- A `thinking` parameter for Anthropic. gilda omits it, so each model runs its default: adaptive on Opus 5, Opus 5.5, Fable and Sonnet 5, none on Opus 4.8 and 4.7.
 
 - OpenAI `include: reasoning.encrypted_content` is sent for every model. It is untested whether a non-reasoning model rejects it.

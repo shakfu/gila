@@ -1,7 +1,7 @@
-// Command tally counts tool use in gila's --json output, per model: calls, failures and output
+// Command tally counts tool use in gilda's --json output, per model: calls, failures and output
 // bytes for each tool, with bash split by the programs it ran. See docs/dev/tools.md.
 //
-//	gila -p "task" --json > run.jsonl
+//	gilda -p "task" --json > run.jsonl
 //	go run ./scripts/tally run.jsonl [more.jsonl ...]
 //
 // With no files it reads stdin. A run's records are attributed to the model in the result

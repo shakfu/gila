@@ -1,10 +1,10 @@
 # Dependencies considered
 
-Libraries evaluated for gila and the decision on each. Written 2026-09-23. None is adopted.
+Libraries evaluated for gilda and the decision on each. Written 2026-09-23. None is adopted.
 
 ## Method
 
-Each library was added to a copy of `go.mod` with one blank import, then `go mod tidy`. "Modules added" counts modules in `go list -m all` that gila does not already list. gila listed 111. `go list -m all` includes test-only modules, so the counts are upper bounds on what the binary compiles in. Binary size was not measured.
+Each library was added to a copy of `go.mod` with one blank import, then `go mod tidy`. "Modules added" counts modules in `go list -m all` that gilda does not already list. gilda listed 111. `go list -m all` includes test-only modules, so the counts are upper bounds on what the binary compiles in. Binary size was not measured.
 
 | Library | Latest release | Modules added | Decision |
 |-|-|-|-|
@@ -30,9 +30,9 @@ No.
 
 - No release for 11 months.
 
-- 236 modules, more than twice gila's total.
+- 236 modules, more than twice gilda's total.
 
-- Its common interface across providers hides what gila depends on: `llm.Native` reasoning replay, prompt cache keys, and per-provider stop reasons such as refusals.
+- Its common interface across providers hides what gilda depends on: `llm.Native` reasoning replay, prompt cache keys, and per-provider stop reasons such as refusals.
 
 - Its chains and agents duplicate `agent.Run`.
 
@@ -44,4 +44,4 @@ No. The `docker` CLI covers both uses:
 
 - **Docker as a `bash` sandbox.** `docs/dev/permissions.md` chooses Landlock and Seatbelt: no daemon, one extra `exec` per call. A container backend would isolate more, at the cost of a daemon, an image, bind mounts that mirror the root, and slower calls. It could still run `docker run` and `docker exec` through `os/exec`.
 
-Revisit only if gila manages container lifecycles in depth, such as attaching streams or watching events.
+Revisit only if gilda manages container lifecycles in depth, such as attaching streams or watching events.

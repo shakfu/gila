@@ -11,7 +11,7 @@ import (
 	sdk "github.com/anthropics/anthropic-sdk-go"
 	"github.com/anthropics/anthropic-sdk-go/option"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 type Provider struct {

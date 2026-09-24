@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/tool"
 )
 
 func call(name string, args map[string]string) llm.ToolCall {

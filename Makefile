@@ -1,4 +1,4 @@
-BIN         := bin/gila
+BIN         := bin/gilda
 INSTALL_DIR := $(HOME)/.local/bin
 VERSION     ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 LDFLAGS     := -s -w -X main.version=$(VERSION)
@@ -8,7 +8,7 @@ LDFLAGS     := -s -w -X main.version=$(VERSION)
 all: build
 
 build:
-	@go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/gila
+	@go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) ./cmd/gilda
 
 test:
 	@go test ./...
@@ -35,8 +35,8 @@ repl: build
 
 install: build
 	@install -d $(INSTALL_DIR)
-	@install -m 755 $(BIN) $(INSTALL_DIR)/gila
-	@echo "installed gila to $(INSTALL_DIR)"
+	@install -m 755 $(BIN) $(INSTALL_DIR)/gilda
+	@echo "installed gilda to $(INSTALL_DIR)"
 
 clean:
 	@rm -rf bin

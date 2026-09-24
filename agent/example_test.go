@@ -5,16 +5,16 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/mock"
-	"github.com/shakfu/gila/prompt"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/mock"
+	"github.com/shakfu/gilda/prompt"
+	"github.com/shakfu/gilda/tool"
 )
 
 // A real provider takes the mock's place, e.g. anthropic.New("anthropic", "", "").
 func Example() {
-	dir, _ := os.MkdirTemp("", "gila-example")
+	dir, _ := os.MkdirTemp("", "gilda-example")
 	defer os.RemoveAll(dir)
 
 	a := agent.New(agent.Config{

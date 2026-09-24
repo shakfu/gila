@@ -7,9 +7,9 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/tool"
 )
 
 func TestMarkdownLines(t *testing.T) {

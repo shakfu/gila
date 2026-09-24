@@ -1,5 +1,5 @@
 // Package mock replays a scripted conversation instead of calling a network, for tests and for
-// running gila offline with --mock.
+// running gilda offline with --mock.
 package mock
 
 import (
@@ -11,7 +11,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 // Step is one scripted provider response.

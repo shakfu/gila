@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/llmtest"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/llmtest"
 )
 
 const completed = `{"type":"response.completed","sequence_number":5,"response":{"id":"resp_1","object":"response","created_at":1,"status":"completed","model":"gpt-x","output":[` +

@@ -122,7 +122,7 @@ func TestWriteCreatesParentsAndKeepsModeAndSymlinks(t *testing.T) {
 	}
 	entries, _ := os.ReadDir(e.Root)
 	for _, en := range entries {
-		if strings.Contains(en.Name(), ".gila-") {
+		if strings.Contains(en.Name(), ".gilda-") {
 			t.Fatalf("temporary file left behind: %s", en.Name())
 		}
 	}

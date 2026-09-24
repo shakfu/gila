@@ -1,4 +1,4 @@
-// Package provider is the registry of providers gila knows, each bound to its vendor's SDK.
+// Package provider is the registry of providers gilda knows, each bound to its vendor's SDK.
 package provider
 
 import (
@@ -7,11 +7,11 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/anthropic"
-	"github.com/shakfu/gila/llm/compat"
-	"github.com/shakfu/gila/llm/openai"
-	"github.com/shakfu/gila/llm/openrouter"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/anthropic"
+	"github.com/shakfu/gilda/llm/compat"
+	"github.com/shakfu/gilda/llm/openai"
+	"github.com/shakfu/gilda/llm/openrouter"
 )
 
 type Entry struct {
@@ -19,7 +19,7 @@ type Entry struct {
 	// KeyEnv names the variables that hold the key, first set wins. A local server's key is
 	// optional.
 	KeyEnv []string
-	// local marks a server gila never chooses by itself and never prices.
+	// local marks a server gilda never chooses by itself and never prices.
 	local bool
 	// BaseURL is the default endpoint; empty uses the SDK's own.
 	BaseURL string

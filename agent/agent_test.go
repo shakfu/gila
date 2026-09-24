@@ -9,10 +9,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/mock"
-	"github.com/shakfu/gila/price"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/mock"
+	"github.com/shakfu/gilda/price"
+	"github.com/shakfu/gilda/tool"
 )
 
 func newAgent(t *testing.T, steps ...mock.Step) (*Agent, *mock.Provider, string) {

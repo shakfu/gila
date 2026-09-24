@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/tool"
 )
 
 func TestWords(t *testing.T) {

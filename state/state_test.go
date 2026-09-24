@@ -31,7 +31,7 @@ func TestStateAndHistoryRoundTrip(t *testing.T) {
 
 func TestRelativeXDGIsIgnored(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", "relative")
-	if d := ConfigDir(); d == "relative/gila" {
+	if d := ConfigDir(); d == "relative/gilda" {
 		t.Fatal("used a relative XDG path")
 	}
 }

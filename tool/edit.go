@@ -9,7 +9,7 @@ import (
 
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 type Edit struct{ Env }

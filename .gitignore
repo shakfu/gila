@@ -1,5 +1,5 @@
 .DS_Store
-/gila
+/gilda
 
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
@@ -43,4 +43,4 @@ AGENTS.md
 REVIEW.md
 
 # Local link to the build
-/gila
+/gilda

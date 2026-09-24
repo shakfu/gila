@@ -11,17 +11,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/llm/llmtest"
+	"github.com/shakfu/gilda/llm/llmtest"
 )
 
 var bin string
 
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "gila-test")
+	dir, err := os.MkdirTemp("", "gilda-test")
 	if err != nil {
 		panic(err)
 	}
-	bin = filepath.Join(dir, "gila")
+	bin = filepath.Join(dir, "gilda")
 	if out, err := exec.Command("go", "build", "-o", bin, ".").CombinedOutput(); err != nil {
 		panic(string(out))
 	}
@@ -30,21 +30,21 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
-// testEnv is the environment without the user's GILA_ variables, which would change what
-// the binary does (GILA_PERMISSIONS, GILA_PROVIDER) or where it writes (GILA_LOG), plus extra.
+// testEnv is the environment without the user's GILDA_ variables, which would change what
+// the binary does (GILDA_PERMISSIONS, GILDA_PROVIDER) or where it writes (GILDA_LOG), plus extra.
 func testEnv(extra ...string) []string {
 	var env []string
 	for _, kv := range os.Environ() {
-		if !strings.HasPrefix(kv, "GILA_") {
+		if !strings.HasPrefix(kv, "GILDA_") {
 			env = append(env, kv)
 		}
 	}
 	return append(env, extra...)
 }
 
-// gila runs the binary in a scratch directory with its own state, and returns stdout, stderr
+// gilda runs the binary in a scratch directory with its own state, and returns stdout, stderr
 // and the exit status.
-func gila(t *testing.T, script string, args ...string) (string, string, int) {
+func gilda(t *testing.T, script string, args ...string) (string, string, int) {
 	t.Helper()
 	dir := t.TempDir()
 	if script != "" {
@@ -75,7 +75,7 @@ const script = `[
 ]`
 
 func TestHeadlessPrintsOnlyTheAnswerOnStdout(t *testing.T) {
-	stdout, stderr, code := gila(t, script, "-p", "go")
+	stdout, stderr, code := gilda(t, script, "-p", "go")
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, stderr)
 	}
@@ -88,7 +88,7 @@ func TestHeadlessPrintsOnlyTheAnswerOnStdout(t *testing.T) {
 }
 
 func TestJSONEndsInAResultRecord(t *testing.T) {
-	stdout, _, code := gila(t, script, "-p", "go", "--json")
+	stdout, _, code := gilda(t, script, "-p", "go", "--json")
 	if code != 0 {
 		t.Fatalf("exit %d", code)
 	}
@@ -114,7 +114,7 @@ func TestJSONEndsInAResultRecord(t *testing.T) {
 }
 
 func TestErrorsExitOneAndAppearInTheResult(t *testing.T) {
-	stdout, _, code := gila(t, `[{"error": "upstream exploded"}]`, "-p", "go", "--json")
+	stdout, _, code := gilda(t, `[{"error": "upstream exploded"}]`, "-p", "go", "--json")
 	if code != 1 || !strings.Contains(stdout, `"outcome":"error"`) || !strings.Contains(stdout, "upstream exploded") {
 		t.Fatalf("exit %d stdout %q", code, stdout)
 	}
@@ -122,7 +122,7 @@ func TestErrorsExitOneAndAppearInTheResult(t *testing.T) {
 
 func TestUsageErrorsExitTwo(t *testing.T) {
 	for _, args := range [][]string{{"--json"}, {"stray"}, {"-p", "x", "--effort", "extreme"}} {
-		if _, stderr, code := gila(t, "", args...); code != 2 || !strings.HasPrefix(stderr, "gila:") {
+		if _, stderr, code := gilda(t, "", args...); code != 2 || !strings.HasPrefix(stderr, "gilda:") {
 			t.Errorf("%v: exit %d stderr %q", args, code, stderr)
 		}
 	}
@@ -163,7 +163,7 @@ func TestPermissionsInJSONMode(t *testing.T) {
 	                      {"name":"write","arguments":{"path":"inside.txt","content":"x"}}]},
 	            {"text":"ok"}]`
 	for mode, wantInside := range map[string]bool{"auto": true, "read-only": false} {
-		stdout, _, code := gila(t, script, "-p", "go", "--json", "--permissions", mode)
+		stdout, _, code := gilda(t, script, "-p", "go", "--json", "--permissions", mode)
 		if code != 0 {
 			t.Fatalf("%s: exit %d", mode, code)
 		}
@@ -178,13 +178,13 @@ func TestPermissionsInJSONMode(t *testing.T) {
 			t.Fatalf("%s: result lacks the mode", mode)
 		}
 	}
-	if _, stderr, code := gila(t, "", "-p", "x", "--permissions", "yolo"); code != 2 || !strings.Contains(stderr, "permissions") {
+	if _, stderr, code := gilda(t, "", "-p", "x", "--permissions", "yolo"); code != 2 || !strings.Contains(stderr, "permissions") {
 		t.Fatalf("bad mode: %d %q", code, stderr)
 	}
 }
 
 func TestHelpFitsEightyColumns(t *testing.T) {
-	stdout, _, code := gila(t, "", "--help")
+	stdout, _, code := gilda(t, "", "--help")
 	if code != 0 || !strings.Contains(stdout, "--permissions MODE") {
 		t.Fatalf("exit %d:\n%s", code, stdout)
 	}
@@ -202,7 +202,7 @@ func TestSettingsAddProtections(t *testing.T) {
 	                      {"name":"write","arguments":{"path":"ok.txt","content":"3"}}]},
 	            {"text":"ok"}]`
 	settings := "[permissions]\nsecrets = [\"*.pem\"]\nprotected = [\"!.git\"]\n"
-	stdout, _ := gilaWithSettings(t, settings, script, 0, "-p", "go", "--json")
+	stdout, _ := gildaWithSettings(t, settings, script, 0, "-p", "go", "--json")
 	for _, want := range []string{
 		"refused: auto mode asks before write under .git",
 		"refused: auto mode asks before write under key.pem",
@@ -212,17 +212,17 @@ func TestSettingsAddProtections(t *testing.T) {
 			t.Errorf("missing %q in\n%s", want, stdout)
 		}
 	}
-	_, stderr := gilaWithSettings(t, "[permissions]\nsecret = []\n", script, 1, "-p", "go")
+	_, stderr := gildaWithSettings(t, "[permissions]\nsecret = []\n", script, 1, "-p", "go")
 	if !strings.Contains(stderr, "unknown keys: permissions.secret") {
 		t.Errorf("bad settings: %q", stderr)
 	}
 }
 
-func gilaWithSettings(t *testing.T, settings, script string, wantCode int, args ...string) (string, string) {
+func gildaWithSettings(t *testing.T, settings, script string, wantCode int, args ...string) (string, string) {
 	t.Helper()
 	dir := t.TempDir()
-	os.MkdirAll(filepath.Join(dir, "cfg", "gila"), 0o700)
-	os.WriteFile(filepath.Join(dir, "cfg", "gila", "settings.toml"), []byte(settings), 0o600)
+	os.MkdirAll(filepath.Join(dir, "cfg", "gilda"), 0o700)
+	os.WriteFile(filepath.Join(dir, "cfg", "gilda", "settings.toml"), []byte(settings), 0o600)
 	os.WriteFile(filepath.Join(dir, "mock.json"), []byte(script), 0o600)
 	cmd := exec.Command(bin, append([]string{"--mock", "mock.json"}, args...)...)
 	cmd.Dir = dir
@@ -245,11 +245,11 @@ func gilaWithSettings(t *testing.T, settings, script string, wantCode int, args 
 func TestSettingsMode(t *testing.T) {
 	script := `[{"calls":[{"name":"write","arguments":{"path":"ok.txt","content":"1"}}]},{"text":"ok"}]`
 	settings := "[permissions]\nmode = \"read-only\"\n"
-	stdout, _ := gilaWithSettings(t, settings, script, 0, "-p", "go", "--json")
+	stdout, _ := gildaWithSettings(t, settings, script, 0, "-p", "go", "--json")
 	if !strings.Contains(stdout, `"permissions":"read-only"`) || !strings.Contains(stdout, "refused: write") {
 		t.Fatalf("settings mode not applied:\n%s", stdout)
 	}
-	stdout, _ = gilaWithSettings(t, settings, script, 0, "-p", "go", "--json", "--permissions", "auto")
+	stdout, _ = gildaWithSettings(t, settings, script, 0, "-p", "go", "--json", "--permissions", "auto")
 	if !strings.Contains(stdout, `"permissions":"auto"`) || strings.Contains(stdout, "refused") {
 		t.Fatalf("flag did not win:\n%s", stdout)
 	}
@@ -263,7 +263,7 @@ func TestCommandAllowlist(t *testing.T) {
 	                      {"name":"bash","arguments":{"command":"touch y"}}]},
 	            {"text":"ok"}]`
 	settings := "[permissions]\nmode = \"ask\"\ncommands = [\"echo\"]\n"
-	stdout, _ := gilaWithSettings(t, settings, script, 0, "-p", "go", "--json")
+	stdout, _ := gildaWithSettings(t, settings, script, 0, "-p", "go", "--json")
 	if !strings.Contains(stdout, `"label":"$ echo hi","name":"bash","ok":true`) {
 		t.Errorf("allowlisted command did not run:\n%s", stdout)
 	}
@@ -299,14 +299,14 @@ func TestRetriesAreShown(t *testing.T) {
 	}
 }
 
-func TestTheUsersGilaVariablesDoNotReachTheBinary(t *testing.T) {
-	t.Setenv("GILA_PERMISSIONS", "read-only")
-	t.Setenv("GILA_LOG", filepath.Join(t.TempDir(), "log"))
-	stdout, _, code := gila(t, `[{"calls":[{"name":"write","arguments":{"path":"x","content":"1"}}]},{"text":"ok"}]`, "-p", "go", "--json")
+func TestTheUsersGildaVariablesDoNotReachTheBinary(t *testing.T) {
+	t.Setenv("GILDA_PERMISSIONS", "read-only")
+	t.Setenv("GILDA_LOG", filepath.Join(t.TempDir(), "log"))
+	stdout, _, code := gilda(t, `[{"calls":[{"name":"write","arguments":{"path":"x","content":"1"}}]},{"text":"ok"}]`, "-p", "go", "--json")
 	if code != 0 || !strings.Contains(stdout, `"permissions":"auto"`) {
-		t.Fatalf("exit %d, the user's GILA_PERMISSIONS leaked:\n%s", code, stdout)
+		t.Fatalf("exit %d, the user's GILDA_PERMISSIONS leaked:\n%s", code, stdout)
 	}
-	if _, err := os.Stat(os.Getenv("GILA_LOG")); err == nil {
-		t.Fatal("the user's GILA_LOG leaked")
+	if _, err := os.Stat(os.Getenv("GILDA_LOG")); err == nil {
+		t.Fatal("the user's GILDA_LOG leaked")
 	}
 }

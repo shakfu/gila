@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"unicode/utf8"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 // OutputCap is the default bound on one tool result in bytes, about 8k tokens. Over the cap the first fifth and
@@ -33,7 +33,7 @@ type Tool interface {
 	Run(ctx context.Context, args json.RawMessage) (Result, error)
 }
 
-// ReadOnly is implemented by a tool that touches nothing outside gila's process except to
+// ReadOnly is implemented by a tool that touches nothing outside gilda's process except to
 // read local files: it writes no file, starts no process and makes no network request.
 // Permission modes run such a tool without asking, even in read-only mode, so the claim must
 // hold for every call. A network tool must not declare it, even one that only fetches: a

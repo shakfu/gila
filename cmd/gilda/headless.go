@@ -11,10 +11,10 @@ import (
 	"os/signal"
 	"strings"
 
-	"github.com/shakfu/gila/agent"
-	"github.com/shakfu/gila/app"
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/tui"
+	"github.com/shakfu/gilda/agent"
+	"github.com/shakfu/gilda/app"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/tui"
 )
 
 // headless answers one prompt. Text streams to stdout and everything else goes to stderr, so
@@ -44,12 +44,12 @@ func headless(parent context.Context, a *app.App, prompt string, asJSON, color b
 		if asJSON {
 			return writeFailure(os.Stdout, err)
 		}
-		fmt.Fprintln(os.Stderr, "gila:", err)
+		fmt.Fprintln(os.Stderr, "gilda:", err)
 		return 1
 	}
 	for _, w := range warns {
 		if !asJSON {
-			fmt.Fprintln(os.Stderr, "gila: warning:", w)
+			fmt.Fprintln(os.Stderr, "gilda: warning:", w)
 		}
 	}
 
@@ -162,7 +162,7 @@ func ttyAsk(ctx context.Context, call llm.ToolCall, label string) (bool, error) 
 		return false, errors.New("refused: approval needs a terminal, and there is none")
 	}
 	defer tty.Close()
-	fmt.Fprintf(tty, "gila: allow %s? [y/N] ", label)
+	fmt.Fprintf(tty, "gilda: allow %s? [y/N] ", label)
 	answer := make(chan string, 1)
 	go func() {
 		line, _ := bufio.NewReader(tty).ReadString('\n')

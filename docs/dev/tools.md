@@ -1,10 +1,10 @@
 # Tools
 
-What makes a tool built in, how gila reaches programs in the environment such as `rg`, `fzf` or `quarto`, and a design for tools declared in `settings.toml`. Written 2026-09-23. Only the section "What exists today" is implemented.
+What makes a tool built in, how gilda reaches programs in the environment such as `rg`, `fzf` or `quarto`, and a design for tools declared in `settings.toml`. Written 2026-09-23. Only the section "What exists today" is implemented.
 
 ## Terms
 
-- **Built-in tool**: a `tool.Tool` compiled into gila and sent to the model with every request. Today there are four: `read`, `write`, `edit`, `bash`.
+- **Built-in tool**: a `tool.Tool` compiled into gilda and sent to the model with every request. Today there are four: `read`, `write`, `edit`, `bash`.
 
 - **Custom tool**: a `tool.Tool` an embedding app adds through `app.Options.Tools`, usually built with `tool.New`. Go code, not configuration.
 
@@ -12,7 +12,7 @@ What makes a tool built in, how gila reaches programs in the environment such as
 
 - **Model-facing** vs **user-facing**: a model-facing tool is one the model calls. A user-facing integration is one the human uses, such as a pager for approval diffs (delta, hunk) or a fuzzy file picker (fzf). They are separate questions; this document is about the first, except where noted.
 
-## What a tool declaration gives gila
+## What a tool declaration gives gilda
 
 A declared tool carries more than a name and a schema. Four things follow from the declaration, and `bash` gets none of them:
 
@@ -53,19 +53,19 @@ From third-party research the user supplied (citations not verifiable, counts ve
 | Claude Code | 15-23 | granular; the set depends on version and configuration |
 | Cursor | about 12, more with browser | granular, plus a browser |
 | Codex | 3-6 | primitive: shell, apply_patch, plan |
-| gila | 4 | primitive, plus `read` |
+| gilda | 4 | primitive, plus `read` |
 
 The count is a poor measure. `bash` reaches every program on the machine. What differs between agents is how much of the model's work goes through declared tools, where the permission modes and output bounds apply.
 
-The token cost of a declaration is small. gila's four definitions total 1,797 bytes of JSON (`read` 435, `write` 351, `edit` 558, `bash` 453). At about 4 bytes per token that is roughly 450 tokens; the ratio is an estimate, not measured. Definitions are cached after the first request, so each extra tool adds about 100-150 cached tokens per request. Tool results cost far more.
+The token cost of a declaration is small. gilda's four definitions total 1,797 bytes of JSON (`read` 435, `write` 351, `edit` 558, `bash` 453). At about 4 bytes per token that is roughly 450 tokens; the ratio is an estimate, not measured. Definitions are cached after the first request, so each extra tool adds about 100-150 cached tokens per request. Tool results cost far more.
 
 ## What exists today
 
-gila can already use any program on `PATH`:
+gilda can already use any program on `PATH`:
 
 1. **The model runs it through `bash`.** `rg`, `quarto render`, `fzf --filter`: whatever the shell finds.
 
-2. **AGENTS.md or a skill tells the model it exists.** A `~/.config/gila/skills/quarto/SKILL.md` saying when and how to run `quarto render` is enough for the model to use it. A skill costs only its frontmatter on each request; the body is read when needed.
+2. **AGENTS.md or a skill tells the model it exists.** A `~/.config/gilda/skills/quarto/SKILL.md` saying when and how to run `quarto render` is enough for the model to use it. A skill costs only its frontmatter on each request; the body is read when needed.
 
 3. **The `commands` allowlist stops the prompts in `ask` mode.** `commands = ["rg", "quarto render"]`.
 
@@ -92,7 +92,7 @@ Four properties decide it:
 | declarable effect | decides where the permission modes can run it without asking | read-only, if flags are fixed | read-only | writes its output files |
 | useful exit codes | `bash` marks any non-zero exit `Failed` | exits 1 on no match | exits 1 on no match | 0 or failure |
 
-`fzf` is mainly a user-facing tool. As a model-facing tool it is only `fzf --filter=QUERY`, a fuzzy filter over stdin, which `rg --files | fzf --filter=q` already reaches through `bash`. Its likely use in gila is user-facing, e.g. a file picker for mentioning paths in the REPL.
+`fzf` is mainly a user-facing tool. As a model-facing tool it is only `fzf --filter=QUERY`, a fuzzy filter over stdin, which `rg --files | fzf --filter=q` already reaches through `bash`. Its likely use in gilda is user-facing, e.g. a file picker for mentioning paths in the REPL.
 
 ## Options
 
@@ -102,7 +102,7 @@ No code. Everything above already works. It leaves `read-only` refusing read-onl
 
 ### B. Tools declared in `settings.toml`
 
-The user declares a program as a tool. gila builds it with `tool.New`, so it gets the same permission handling as a built-in tool.
+The user declares a program as a tool. gilda builds it with `tool.New`, so it gets the same permission handling as a built-in tool.
 
 ```toml
 [[tools.command]]
@@ -119,7 +119,7 @@ path = { type = "string", description = "File or directory.", default = ".", pat
 
 Rules the design needs:
 
-- **No shell.** gila runs `argv` with `exec`, not `bash -c`. A placeholder fills one whole argv element and cannot split into several, so `;`, `$()` and globs in a value are inert.
+- **No shell.** gilda runs `argv` with `exec`, not `bash -c`. A placeholder fills one whole argv element and cannot split into several, so `;`, `$()` and globs in a value are inert.
 
 - **No injected flags.** A value starting with `-` could still set a flag: a `pattern` of `--pre=sh` would make `rg` run programs. Two defences: put `--` before the placeholders, as above, and reject values that start with `-` unless the argument sets `allow_dash = true`. `--` alone is not enough, because not every program honours it.
 
@@ -135,11 +135,11 @@ Cost: one definition per tool on every request, about 100-150 cached tokens each
 
 ### C. MCP client
 
-MCP (Model Context Protocol) lets gila start or connect to servers that each expose tools. It gives access to many existing servers without writing a declaration per tool.
+MCP (Model Context Protocol) lets gilda start or connect to servers that each expose tools. It gives access to many existing servers without writing a declaration per tool.
 
 - **Tokens.** Servers often expose many tools with long descriptions. All are sent with every request.
 
-- **Effect.** MCP tool annotations such as `readOnlyHint` come from the server, which gila cannot verify. Each MCP tool would have to be treated as undeclared: it asks in `auto` mode and is refused in `read-only` mode, whatever it claims.
+- **Effect.** MCP tool annotations such as `readOnlyHint` come from the server, which gilda cannot verify. Each MCP tool would have to be treated as undeclared: it asks in `auto` mode and is refused in `read-only` mode, whatever it claims.
 
 - **Complexity.** Server lifecycle, a transport, schema translation for three providers, and a dependency.
 
@@ -182,7 +182,7 @@ An alternative to B is teaching the permission layer about read-only programs: c
 `scripts/tally` counts tool use in `--json` output, per model:
 
 ```sh
-gila -p "task" --json > run.jsonl
+gilda -p "task" --json > run.jsonl
 go run ./scripts/tally run.jsonl [more.jsonl ...]
 ```
 
@@ -208,4 +208,4 @@ Limits:
 
 2. Should a declared tool take `paths` from its output as well as its arguments? `quarto render` writes files the arguments do not name, so `auto` cannot check them.
 
-3. Should gila ship example declarations (`rg`, `fd`) in the README, or only the mechanism?
+3. Should gilda ship example declarations (`rg`, `fd`) in the README, or only the mechanism?

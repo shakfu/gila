@@ -13,7 +13,7 @@ import (
 
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 type Write struct{ Env }
@@ -116,7 +116,7 @@ func replace(path string, data []byte) error {
 	} else if !errors.Is(err, fs.ErrNotExist) {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".gila-*")
+	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".gilda-*")
 	if err != nil {
 		return err
 	}

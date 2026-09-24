@@ -6,7 +6,7 @@ Done: `edit` and `write`, on by default, off with `diff = false` in `settings.to
 
 Remaining:
 
-- `-p` asks on `/dev/tty` (`cmd/gila/headless.go`, `ttyAsk`) and shows neither the diff nor escaped control characters.
+- `-p` asks on `/dev/tty` (`cmd/gilda/headless.go`, `ttyAsk`) and shows neither the diff nor escaped control characters.
 
 - Decide whether `diff` stays on by default after trying it.
 
@@ -42,7 +42,7 @@ Run a multi-turn, tool-using task with a Gemini thinking model through OpenRoute
 
 - `-p` in plain-text mode prints a partial answer, retries, and then prints the full answer after it on stdout. Decide whether to hold output until the attempt finishes, or to print a marker on stdout.
 
-- The TUI's agent goroutine sends on the event channel with no way out. If the TUI exits while the buffer is full, the goroutine blocks forever. Every send must also watch a context that lives as long as the TUI, not the per-prompt one, because Esc cancels that one and `doneMsg` must still be delivered. This only matters when gila is embedded.
+- The TUI's agent goroutine sends on the event channel with no way out. If the TUI exits while the buffer is full, the goroutine blocks forever. Every send must also watch a context that lives as long as the TUI, not the per-prompt one, because Esc cancels that one and `doneMsg` must still be delivered. This only matters when gilda is embedded.
 
 - The TUI's background commands, `Prepare` (`tui/tui.go:161`) and the model list (`fetchModels`, `tui/commands.go:143`), run on `m.ctx`, the caller's context. `tui.Run` does not cancel it on exit and waits for none of them, so an embedding app can have network calls still running after the REPL closes. Give them a context that `Run` cancels, and wait for them before returning.
 

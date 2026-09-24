@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/llm/llmtest"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/llm/llmtest"
 )
 
 var turnWithThinkingAndCall = llmtest.SSE(

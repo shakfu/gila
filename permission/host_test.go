@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/shakfu/gila/llm"
-	"github.com/shakfu/gila/tool"
+	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/tool"
 )
 
 func TestHostAllowed(t *testing.T) {

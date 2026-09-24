@@ -7,7 +7,7 @@ import (
 
 	"github.com/OpenRouterTeam/go-sdk/models/components"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 func str(s string) *string { return &s }

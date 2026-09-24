@@ -14,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/shakfu/gila/llm"
+	"github.com/shakfu/gilda/llm"
 )
 
 // loginShell matches a command wrapped in a login shell, such as `bash -lc '...'`. GPT models
@@ -113,7 +113,7 @@ func (b Bash) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
 		notes = append(notes, stopped)
 	} else if syscall.Kill(-pgid, 0) == nil {
 		b.Jobs.add(pgid)
-		notes = append(notes, fmt.Sprintf("background processes still running in group %d; they stop when gila exits", pgid))
+		notes = append(notes, fmt.Sprintf("background processes still running in group %d; they stop when gilda exits", pgid))
 	}
 	if code != 0 {
 		notes = append(notes, fmt.Sprintf("exit %d", code))
