@@ -113,7 +113,10 @@ func TestRefusalsSayWhy(t *testing.T) {
 		t.Fatalf("got %v", err)
 	}
 	asked := ""
-	yes := func(_ context.Context, _ llm.ToolCall, label string) (bool, error) { asked = label; return true, nil }
+	yes := func(_ context.Context, _ tool.Tool, _ llm.ToolCall, label string) (bool, error) {
+		asked = label
+		return true, nil
+	}
 	ok, err := Approver(Auto, root, yes)(context.Background(), tool.Read{Env: env}, call("read", map[string]string{"path": ".env"}), "read .env")
 	if !ok || err != nil || asked != "read .env" {
 		t.Fatalf("ask: %v %v %q", ok, err, asked)

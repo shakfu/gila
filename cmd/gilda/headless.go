@@ -14,6 +14,7 @@ import (
 	"github.com/shakfu/gilda/agent"
 	"github.com/shakfu/gilda/app"
 	"github.com/shakfu/gilda/llm"
+	"github.com/shakfu/gilda/tool"
 	"github.com/shakfu/gilda/tui"
 )
 
@@ -156,7 +157,7 @@ func writeFailure(w io.Writer, err error) int {
 
 // ttyAsk asks on the controlling terminal, so the question reaches the user even when stdout
 // and stderr are redirected. With no terminal the call is refused.
-func ttyAsk(ctx context.Context, call llm.ToolCall, label string) (bool, error) {
+func ttyAsk(ctx context.Context, _ tool.Tool, _ llm.ToolCall, label string) (bool, error) {
 	tty, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return false, errors.New("refused: approval needs a terminal, and there is none")

@@ -429,11 +429,11 @@ func (a *App) usesVendorURL(id string) bool {
 
 // Preview returns what an approval shows below the call: a diff when the tool can make one and
 // settings.toml does not set diff = false, else "". A failed preview shows nothing; the call fails the same way.
-func (a *App) Preview(call llm.ToolCall) string {
+func (a *App) Preview(t tool.Tool, call llm.ToolCall) string {
 	if !a.diff {
 		return ""
 	}
-	p, ok := tool.Find(a.Agent.Tools, call.Name).(tool.Previewer)
+	p, ok := t.(tool.Previewer)
 	if !ok {
 		return ""
 	}

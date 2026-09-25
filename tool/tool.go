@@ -49,6 +49,16 @@ type Previewer interface {
 	Preview(args json.RawMessage) (string, error)
 }
 
+// Binder is implemented by a tool that resolves what a call touches before it is approved.
+// The agent approves and runs the Tool that Bind returns in place of the receiver, so the
+// paths approval checks, the preview the user sees and the files Run changes are the same. A
+// symlink swapped in between is not followed; write and edit fail if the file or a directory
+// above it was replaced. A Bind error is returned only after approval, since it can reveal
+// what an unapproved file holds.
+type Binder interface {
+	Bind(args json.RawMessage) (Tool, error)
+}
+
 // Hosts is implemented by a network tool: it names the hosts a call contacts, such as
 // "pkg.go.dev". A network tool is never read-only, whatever ReadOnly says. Permission modes
 // run a call to hosts in the allowlist without asking; any other host asks, or is refused in

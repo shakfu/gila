@@ -195,6 +195,20 @@ func TestHelpFitsEightyColumns(t *testing.T) {
 	}
 }
 
+// GILDA_API_KEY must not reach --help, as a flag default would; --api-key warns that it leaks.
+func TestAPIKeyStaysOutOfHelp(t *testing.T) {
+	dir := t.TempDir()
+	cmd := exec.Command(bin, "--help")
+	cmd.Env = testEnv("GILDA_API_KEY=sk-secret", "XDG_STATE_HOME="+dir, "XDG_CONFIG_HOME="+dir, "XDG_CACHE_HOME="+dir)
+	out, err := cmd.CombinedOutput()
+	if err != nil || strings.Contains(string(out), "sk-secret") {
+		t.Fatalf("err %v, help shows the key:\n%s", err, out)
+	}
+	if _, stderr, _ := gilda(t, "", "--api-key", "k", "-p", "x"); !strings.Contains(stderr, "warning: --api-key") {
+		t.Errorf("no warning for --api-key: %q", stderr)
+	}
+}
+
 // settings.toml adds protections; it cannot lift a built-in one, and a bad file stops the run.
 func TestSettingsAddProtections(t *testing.T) {
 	script := `[{"calls":[{"name":"write","arguments":{"path":".git/x","content":"1"}},

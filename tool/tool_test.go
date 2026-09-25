@@ -482,3 +482,100 @@ func TestLimitsApply(t *testing.T) {
 		t.Errorf("zero limits became %+v", l)
 	}
 }
+
+// A bound call changes the file it resolved, or fails if that file or a directory above it was
+// replaced, created or edited since; it never follows a path swapped in between.
+func TestBoundCallsRefuseSwaps(t *testing.T) {
+	e := env(t)
+	outside := t.TempDir()
+	bindWrite := func(path string) Tool {
+		t.Helper()
+		b, err := Write{e}.Bind(args(t, map[string]any{"path": path, "content": "new"}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return b
+	}
+	mustFail := func(what string, b Tool) {
+		t.Helper()
+		if _, err := b.Run(context.Background(), nil); err == nil || !strings.Contains(err.Error(), "changed") {
+			t.Errorf("%s: %v", what, err)
+		}
+	}
+	swap := func(dir string) {
+		t.Helper()
+		if err := os.Rename(dir, dir+".old"); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A directory swapped for a symlink out of the tree.
+	d := filepath.Join(e.Root, "d")
+	if err := os.Mkdir(d, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	b := bindWrite("d/f")
+	swap(d)
+	mustFail("swapped directory", b)
+
+	// A missing directory created as a symlink.
+	b = bindWrite("n/f")
+	if err := os.Symlink(outside, filepath.Join(e.Root, "n")); err != nil {
+		t.Fatal(err)
+	}
+	mustFail("directory created as a symlink", b)
+	if _, err := os.Stat(filepath.Join(outside, "f")); err == nil {
+		t.Fatal("a write left the tree")
+	}
+
+	// A file replaced, or created where there was none.
+	f := filepath.Join(e.Root, "f")
+	write(t, f, "old")
+	b = bindWrite("f")
+	if err := os.Rename(f, f+".old"); err != nil {
+		t.Fatal(err)
+	}
+	write(t, f, "old")
+	mustFail("replaced file", b)
+	b = bindWrite("g")
+	write(t, filepath.Join(e.Root, "g"), "someone else's")
+	mustFail("created file", b)
+
+	// An edit whose file changed in place, with its size and time kept.
+	write(t, f, "abc")
+	info, _ := os.Stat(f)
+	b, err := Edit{e}.Bind(args(t, map[string]any{"path": "f", "old_string": "a", "new_string": "x"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	fh, err := os.OpenFile(f, os.O_WRONLY, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fh.WriteAt([]byte("z"), 2)
+	fh.Close()
+	if err := os.Chtimes(f, info.ModTime(), info.ModTime()); err != nil {
+		t.Fatal(err)
+	}
+	mustFail("edited file", b)
+	if data, _ := os.ReadFile(f); string(data) != "abz" {
+		t.Errorf("file is %q", data)
+	}
+
+	// Unchanged, a bound write lands and reports both paths to approval.
+	write(t, f, "old")
+	b = bindWrite("f")
+	paths, _ := b.(Paths).Paths(nil)
+	if len(paths) != 2 || paths[0] != "f" || !strings.HasSuffix(paths[1], string(filepath.Separator)+"f") {
+		t.Errorf("paths %v", paths)
+	}
+	if _, err := b.Run(context.Background(), nil); err != nil {
+		t.Fatal(err)
+	}
+	if data, _ := os.ReadFile(f); string(data) != "new" {
+		t.Errorf("file is %q", data)
+	}
+}

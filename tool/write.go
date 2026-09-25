@@ -4,12 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"os"
-	"path/filepath"
 
 	"github.com/aymanbagabas/go-udiff"
 
@@ -40,20 +36,34 @@ func (Write) Label(raw json.RawMessage) string {
 	return "write " + a.Path
 }
 
-func (w Write) Run(_ context.Context, raw json.RawMessage) (Result, error) {
-	a, err := parseWrite(raw)
+func (w Write) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
+	b, err := w.Bind(raw)
 	if err != nil {
 		return Result{}, err
 	}
-	path := w.abs(a.Path)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return Result{}, err
+	return b.Run(ctx, raw)
+}
+
+// Preview returns a unified diff against the file the write replaces; see boundWrite.Preview.
+func (w Write) Preview(raw json.RawMessage) (string, error) {
+	b, err := w.Bind(raw)
+	if err != nil {
+		return "", err
 	}
-	if err := replace(path, []byte(a.Content)); err != nil {
-		return Result{}, err
+	return b.(Previewer).Preview(raw)
+}
+
+// Bind fixes the call to the file its path resolves to now; see Binder.
+func (w Write) Bind(raw json.RawMessage) (Tool, error) {
+	a, err := parseWrite(raw)
+	if err != nil {
+		return nil, err
 	}
-	size := plural(len(a.Content), "byte")
-	return Result{Output: "wrote " + size + " to " + a.Path, Summary: size}, nil
+	t, err := bind(w.abs(a.Path), a.Path)
+	if err != nil {
+		return nil, err
+	}
+	return boundWrite{w, a, t}, nil
 }
 
 func parseWrite(raw json.RawMessage) (writeArgs, error) {
@@ -67,24 +77,40 @@ func parseWrite(raw json.RawMessage) (writeArgs, error) {
 	return a, nil
 }
 
-// Preview returns a unified diff against the file the write replaces, following a symlink as
-// Run does; a new file diffs against /dev/null. A file over Limits.DiffBytes or holding a NUL
-// byte gets a one-line summary instead: Run never reads the old file, so without a bound a
-// preview could cost more than the write.
-func (w Write) Preview(raw json.RawMessage) (string, error) {
-	a, err := parseWrite(raw)
-	if err != nil {
-		return "", err
+// boundWrite is a write fixed to its target. It ignores the arguments its methods are passed.
+type boundWrite struct {
+	Write
+	args   writeArgs
+	target target
+}
+
+func (b boundWrite) Paths(json.RawMessage) ([]string, error) { return b.target.paths(), nil }
+
+func (b boundWrite) Run(context.Context, json.RawMessage) (Result, error) {
+	if err := b.target.write([]byte(b.args.Content), nil); err != nil {
+		return Result{}, err
 	}
-	f, info, err := openRegular(w.abs(a.Path), a.Path)
-	if errors.Is(err, fs.ErrNotExist) {
+	size := plural(len(b.args.Content), "byte")
+	return Result{Output: "wrote " + size + " to " + b.args.Path, Summary: size}, nil
+}
+
+// Preview returns a unified diff against the bound file; a new file diffs against /dev/null. A
+// file over Limits.DiffBytes or holding a NUL byte gets a one-line summary instead: Run never
+// reads the old file, so without a bound a preview could cost more than the write.
+func (b boundWrite) Preview(json.RawMessage) (string, error) {
+	a, t := b.args, b.target
+	if t.file == nil {
 		return udiff.Unified("/dev/null", a.Path, "", a.Content), nil
 	}
+	f, info, err := openRegular(t.path, a.Path)
 	if err != nil {
 		return "", err
 	}
 	defer f.Close()
-	diffCap := w.limits().DiffBytes
+	if !t.same(info) {
+		return "", t.changed()
+	}
+	diffCap := b.limits().DiffBytes
 	data, err := io.ReadAll(io.LimitReader(f, int64(diffCap)+1))
 	if err != nil {
 		return "", err
@@ -101,36 +127,4 @@ func (w Write) Preview(raw json.RawMessage) (string, error) {
 		return "content unchanged", nil
 	}
 	return udiff.Unified(a.Path, a.Path, string(data), a.Content), nil
-}
-
-// replace writes data to path through a temporary file and a rename, so a crash or a full
-// disk never leaves half a file where the only copy was. It follows a symlink to its target
-// and keeps an existing file's mode.
-func replace(path string, data []byte) error {
-	if target, err := filepath.EvalSymlinks(path); err == nil {
-		path = target
-	}
-	mode := fs.FileMode(0o644)
-	if info, err := os.Stat(path); err == nil {
-		mode = info.Mode().Perm()
-	} else if !errors.Is(err, fs.ErrNotExist) {
-		return err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(path), "."+filepath.Base(path)+".gilda-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Chmod(mode); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	return os.Rename(tmp.Name(), path)
 }

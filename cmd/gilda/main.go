@@ -52,6 +52,12 @@ func main() {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			f.headless = cmd.Flags().Changed("prompt")
+			if !cmd.Flags().Changed("api-key") {
+				f.APIKey = os.Getenv("GILDA_API_KEY")
+			} else if !f.json {
+				fmt.Fprintln(os.Stderr, "gilda: warning: --api-key shows the key in the process "+
+					"list and shell history; set GILDA_API_KEY instead")
+			}
 			if f.json && !f.headless {
 				return errors.New("--json needs -p")
 			}
@@ -81,7 +87,8 @@ func main() {
 	fl.StringVarP(&f.Root, "root", "C", "", "working `DIR` (default: the current one)")
 	fl.StringVar(&f.BaseURL, "base-url", os.Getenv("GILDA_BASE_URL"),
 		"provider endpoint `URL`; needs --provider; turns off cost estimates")
-	fl.StringVar(&f.APIKey, "api-key", os.Getenv("GILDA_API_KEY"), "provider `KEY`; needs --provider")
+	// Not defaulted from GILDA_API_KEY, which --help would print; RunE reads it instead.
+	fl.StringVar(&f.APIKey, "api-key", "", "provider `KEY`; needs --provider; prefer GILDA_API_KEY")
 	fl.StringVar(&f.Permissions, "permissions", os.Getenv("GILDA_PERMISSIONS"),
 		"`MODE` for what runs without asking: auto, ask, all, read-only "+
 			"(default: mode in settings.toml, else auto). auto asks before "+

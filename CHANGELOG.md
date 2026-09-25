@@ -47,6 +47,10 @@
 
 ### Fixed
 
+- `--help` printed the value of `GILDA_API_KEY` as the default of `--api-key`. The flag no longer takes its default from the environment; the variable is read after parsing. `--api-key` itself now warns on stderr, since the key shows in the process list and shell history.
+
+- A `write` or `edit` resolved its path twice: once for approval and again when it ran. A symlink swapped while the user decided could redirect it, and an edit could apply to content other than the diff shown. Both tools now resolve the file before approval and write to it through the directory opened then (`tool.Binder`). A call fails if the file or a directory above it was replaced, and an edit also if the content changed. Binding was chosen over re-checking before the run, which resolves the path again and only narrows the gap. `permission.AskFunc` and `App.Preview` take the bound tool, so the preview shows the file the call changes. A write over an existing FIFO or other non-regular file now fails instead of replacing it.
+
 - `write` without `content`, or `edit` without `new_string`, succeeded and emptied the file or deleted the match. A missing or `null` string argument decoded as `""`. OpenAI tools are sent non-strict, and local servers may not enforce schemas, so the model's `required` list was no guarantee. Both are now errors that leave the file unchanged; an explicit `""` is still accepted.
 
 - The approval prompt cut the call to `max(width-60, 20)` columns, so at 80 columns `$ echo harmless; rm -rf dir` showed as `$ echo harmless-l...`. The whole call is now printed above the prompt, wrapped, with control characters shown as escapes.

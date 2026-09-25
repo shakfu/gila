@@ -12,8 +12,6 @@ Remaining:
 
 - `askVia` computes the preview before the TUI checks "always allow", so a call allowed with `a` still reads its file once for a preview nobody sees.
 
-- Refuse an edit or write when the file changed after the preview. `Run` recomputes the edit from the file at run time, so a change made while the user decides (an editor save, a background job) means the edit applied is not the diff approved. Keep a hash of `before` from the preview and have `Run` refuse on a mismatch. This needs the hash passed from approval to `Run`, which the `tool.Tool` interface does not carry today.
-
 Constraints:
 
 - A large diff fills the terminal history. Show a limited diff inline, say how many lines are hidden, and bind a key that opens the full diff in a pager. Hiding lines without a way to see them repeats the bug that `tui.ApprovalLines` fixed.

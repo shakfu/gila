@@ -357,11 +357,11 @@ func TestPreviewFollowsTheDiffSetting(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		got := a.Preview(call)
+		got := a.Preview(tool.Find(a.Agent.Tools, "edit"), call)
 		if want != strings.Contains(got, "-b\n+c") {
 			t.Errorf("setting %q: preview %q", setting, got)
 		}
-		if a.Preview(llm.ToolCall{Name: "bash", Arguments: `{"command":"ls"}`}) != "" {
+		if a.Preview(tool.Find(a.Agent.Tools, "bash"), llm.ToolCall{Name: "bash", Arguments: `{"command":"ls"}`}) != "" {
 			t.Errorf("setting %q: bash has no preview", setting)
 		}
 	}

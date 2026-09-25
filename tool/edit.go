@@ -40,33 +40,62 @@ func (Edit) Label(raw json.RawMessage) string {
 	return "edit " + a.Path
 }
 
-func (e Edit) Run(_ context.Context, raw json.RawMessage) (Result, error) {
-	c, err := e.apply(raw)
+func (e Edit) Run(ctx context.Context, raw json.RawMessage) (Result, error) {
+	b, err := e.Bind(raw)
 	if err != nil {
 		return Result{}, err
 	}
-	if err := replace(c.path, []byte(c.after)); err != nil {
-		return Result{}, err
-	}
-	summary := "1 replacement"
-	if c.n > 1 {
-		summary = fmt.Sprintf("%d replacements", c.n)
-	}
-	return Result{Output: fmt.Sprintf("edited %s: %s", c.name, summary), Summary: summary}, nil
+	return b.Run(ctx, raw)
 }
 
 // Preview returns the unified diff Run would apply, computed the same way.
 func (e Edit) Preview(raw json.RawMessage) (string, error) {
-	c, err := e.apply(raw)
+	b, err := e.Bind(raw)
 	if err != nil {
 		return "", err
 	}
-	return udiff.Unified(c.name, c.name, c.before, c.after), nil
+	return b.(Previewer).Preview(raw)
+}
+
+// Bind reads the file and works out the edit; the bound call applies it only if the file is
+// unchanged. See Binder.
+func (e Edit) Bind(raw json.RawMessage) (Tool, error) {
+	c, err := e.apply(raw)
+	if err != nil {
+		return nil, err
+	}
+	return boundEdit{e, c}, nil
+}
+
+// boundEdit is an edit fixed to its file and its result. It ignores the arguments its methods
+// are passed.
+type boundEdit struct {
+	Edit
+	change
+}
+
+func (b boundEdit) Paths(json.RawMessage) ([]string, error) { return b.target.paths(), nil }
+
+func (b boundEdit) Run(context.Context, json.RawMessage) (Result, error) {
+	if err := b.target.write([]byte(b.after), []byte(b.before)); err != nil {
+		return Result{}, err
+	}
+	summary := "1 replacement"
+	if b.n > 1 {
+		summary = fmt.Sprintf("%d replacements", b.n)
+	}
+	return Result{Output: fmt.Sprintf("edited %s: %s", b.target.name, summary), Summary: summary}, nil
+}
+
+func (b boundEdit) Preview(json.RawMessage) (string, error) {
+	name := b.target.name
+	return udiff.Unified(name, name, b.before, b.after), nil
 }
 
 type change struct {
-	path, name, before, after string
-	n                         int
+	target        target
+	before, after string
+	n             int
 }
 
 // apply works out an edit without writing it. It refuses an ambiguous match: an edit that
@@ -86,8 +115,11 @@ func (e Edit) apply(raw json.RawMessage) (change, error) {
 	if a.OldString == a.NewString {
 		return change{}, fmt.Errorf("old_string and new_string are identical")
 	}
-	path := e.abs(a.Path)
-	f, _, err := openRegular(path, a.Path)
+	t, err := bind(e.abs(a.Path), a.Path)
+	if err != nil {
+		return change{}, err
+	}
+	f, info, err := openRegular(t.path, a.Path)
 	if err != nil {
 		return change{}, err
 	}
@@ -95,6 +127,9 @@ func (e Edit) apply(raw json.RawMessage) (change, error) {
 	f.Close()
 	if err != nil {
 		return change{}, err
+	}
+	if t.file == nil || !t.same(info) {
+		return change{}, t.changed()
 	}
 	text := string(data)
 	old, repl := a.OldString, a.NewString
@@ -111,7 +146,7 @@ func (e Edit) apply(raw json.RawMessage) (change, error) {
 	case n > 1 && !a.ReplaceAll:
 		return change{}, fmt.Errorf("old_string occurs %d times in %s; add context or set replace_all", n, a.Path)
 	}
-	c := change{path: path, name: a.Path, before: text, n: n}
+	c := change{target: t, before: text, n: n}
 	if a.ReplaceAll {
 		c.after = strings.ReplaceAll(text, old, repl)
 	} else {

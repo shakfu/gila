@@ -3,8 +3,9 @@
 //
 // Decisions follow what a tool declares (see tool.ReadOnly and tool.Paths), not its name, so
 // a custom tool cannot inherit a built-in's policy by reusing its name. The checks guard
-// against mistakes, not an adversary: bash is not confined in any mode but read-only, and a
-// symlink swapped between the check and the write can redirect it.
+// against mistakes, not an adversary: bash is not confined in any mode but read-only. A tool
+// that is not a tool.Binder resolves its paths again when it runs, so a symlink swapped
+// between the check and the write can redirect it; write and edit are Binders.
 package permission
 
 import (
@@ -51,9 +52,10 @@ func Parse(s string) (Mode, error) {
 	return "", fmt.Errorf("permissions must be auto, ask, all or read-only, not %q", s)
 }
 
-// AskFunc asks the user whether a call may run. label is the call as the user sees it, such
-// as "$ go test".
-type AskFunc func(ctx context.Context, call llm.ToolCall, label string) (bool, error)
+// AskFunc asks the user whether a call may run. t is the tool that will run it, bound when it
+// is a tool.Binder, so a preview should come from t. label is the call as the user sees it,
+// such as "$ go test".
+type AskFunc func(ctx context.Context, t tool.Tool, call llm.ToolCall, label string) (bool, error)
 
 // Approver returns the approval function for mode, with root as the working directory. Each
 // Rules is a layer, such as the user's settings and an embedding app's own, added to the
@@ -71,7 +73,7 @@ func Approver(mode Mode, root string, ask AskFunc, rules ...Rules) func(context.
 		case ask == nil:
 			return false, fmt.Errorf("refused: %s mode asks before %s, and there is no one to ask", mode, why)
 		}
-		return ask(ctx, call, label)
+		return ask(ctx, t, call, label)
 	}
 }
 

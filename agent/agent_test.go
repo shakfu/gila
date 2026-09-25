@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -344,5 +345,61 @@ func TestStreamRetriesCanBeTurnedOff(t *testing.T) {
 	a.StreamRetries = 0
 	if _, err := a.Run(context.Background(), "go", nil); !errors.Is(err, llm.ErrIncomplete) || len(p.Requests) != 1 {
 		t.Fatalf("err %v after %d requests", err, len(p.Requests))
+	}
+}
+
+// A symlink swapped while the user decides cannot redirect an approved write: it goes to the
+// file approval saw. A declined
+// call's bind error, which can reveal an unapproved file's content, does not reach the model.
+func TestApprovalBindsTheTarget(t *testing.T) {
+	a, _, root := newAgent(t,
+		mock.Step{Calls: []mock.Call{
+			call("write", map[string]string{"path": "link", "content": "new"}),
+			call("edit", map[string]string{"path": "secret", "old_string": "guess", "new_string": "x"}),
+		}},
+		mock.Step{Text: "ok"},
+	)
+	outside := filepath.Join(t.TempDir(), "outside")
+	for path, text := range map[string]string{filepath.Join(root, "f"): "f", outside: "outside", filepath.Join(root, "secret"): "s"} {
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	link := filepath.Join(root, "link")
+	if err := os.Symlink("f", link); err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	a.Approve = func(_ context.Context, tl tool.Tool, c llm.ToolCall, _ string) (bool, error) {
+		if c.Name == "edit" {
+			return false, nil
+		}
+		paths, _ = tl.(tool.Paths).Paths(json.RawMessage(c.Arguments))
+		if err := os.Remove(link); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outside, link); err != nil {
+			t.Fatal(err)
+		}
+		return true, nil
+	}
+	if _, err := a.Run(context.Background(), "go", nil); err != nil {
+		t.Fatal(err)
+	}
+	real, _ := filepath.EvalSymlinks(filepath.Join(root, "f"))
+	if !slices.Contains(paths, real) {
+		t.Errorf("approval saw %v, not the resolved %s", paths, real)
+	}
+	r := a.History[2].Results
+	if r[0].IsError {
+		t.Errorf("write through a swapped link: %+v", r[0])
+	}
+	if r[1].Content != Declined {
+		t.Errorf("declined edit: %+v", r[1])
+	}
+	for path, want := range map[string]string{filepath.Join(root, "f"): "new", outside: "outside"} {
+		if data, _ := os.ReadFile(path); string(data) != want {
+			t.Errorf("%s is %q", path, data)
+		}
 	}
 }

@@ -28,7 +28,7 @@ Flags:
   -C, --root DIR           working DIR (default: the current one)
       --base-url URL       provider endpoint URL; needs --provider; turns
                            off cost estimates
-      --api-key KEY        provider KEY; needs --provider
+      --api-key KEY        provider KEY; needs --provider; prefer GILDA_API_KEY
       --permissions MODE   MODE for what runs without asking: auto, ask,
                            all, read-only (default: mode in settings.toml,
                            else auto). auto asks before touching secrets
@@ -194,7 +194,7 @@ These checks guard against mistakes, not an adversary.
 
 - `bash` is not confined: `cat .env`, `rm -rf .git` or `curl` to any host through it are not caught, in any mode where it runs.
 
-- A symlink swapped between the check and the write can redirect it.
+- `write` and `edit` resolve their file before approval and write to that file, failing if it or a directory above it was replaced since. A custom tool does the same only by implementing `tool.Binder`; otherwise a symlink swapped between the check and the write can redirect it.
 
 - A host is checked by name, not by where it resolves or redirects.
 

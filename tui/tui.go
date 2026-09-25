@@ -26,6 +26,7 @@ import (
 	"github.com/shakfu/gilda/permission"
 	"github.com/shakfu/gilda/prompt"
 	"github.com/shakfu/gilda/state"
+	"github.com/shakfu/gilda/tool"
 )
 
 type Options struct {
@@ -360,11 +361,11 @@ func (m *model) start(text string) tea.Cmd {
 // askVia sends approval questions to the REPL through the run's event channel and waits for
 // the answer, or for the run to be cancelled. The preview is made here, off the UI goroutine,
 // since it may read files.
-func askVia(ch chan<- tea.Msg, preview func(llm.ToolCall) string) permission.AskFunc {
-	return func(ctx context.Context, call llm.ToolCall, label string) (bool, error) {
+func askVia(ch chan<- tea.Msg, preview func(tool.Tool, llm.ToolCall) string) permission.AskFunc {
+	return func(ctx context.Context, t tool.Tool, call llm.ToolCall, label string) (bool, error) {
 		reply := make(chan bool, 1)
 		select {
-		case ch <- approvalMsg{call: call, label: label, preview: preview(call), reply: reply}:
+		case ch <- approvalMsg{call: call, label: label, preview: preview(t, call), reply: reply}:
 		case <-ctx.Done():
 			return false, ctx.Err()
 		}

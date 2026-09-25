@@ -14,13 +14,14 @@ What makes a tool built in, how gilda reaches programs in the environment such a
 
 ## What a tool declaration gives gilda
 
-A declared tool carries more than a name and a schema. Four things follow from the declaration, and `bash` gets none of them:
+A declared tool carries more than a name and a schema. Five things follow from the declaration, and `bash` gets none of them:
 
 | Declared | Gives | Interface |
 |-|-|-|
 | effect | the permission modes decide without asking: a read-only tool runs even in `read-only` mode | `tool.ReadOnly`, `tool.Paths`, `tool.Hosts` |
 | label | the approval prompt and tool line show what the call does, not a shell string | `Label` |
 | preview | the approval shows the change before it happens | `tool.Previewer` |
+| binding | the approval, the preview and the run act on the same file | `tool.Binder` |
 | output shape | the tool bounds and formats its result, which sets its token cost | `Run` |
 
 `bash` is opaque. In `ask` mode every command prompts unless the `commands` allowlist matches it. The allowlist matches by word prefix and rejects chaining, substitution, redirection and variable expansion (`permission/command.go`). In `read-only` mode `bash` is refused, allowlisted or not (`permission/command_test.go:58`).

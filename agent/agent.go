@@ -290,8 +290,16 @@ func (a *Agent) runTools(ctx context.Context, calls []llm.ToolCall, skip error, 
 	return results, ctx.Err()
 }
 
-// run asks Approve, when set, then runs the tool.
+// run binds the call when the tool is a tool.Binder, asks Approve, when set, then runs it.
 func (a *Agent) run(ctx context.Context, t tool.Tool, c llm.ToolCall, label string, args json.RawMessage) (tool.Result, error) {
+	var bindErr error
+	if b, ok := t.(tool.Binder); ok {
+		if bound, err := b.Bind(args); err != nil {
+			bindErr = err
+		} else {
+			t = bound
+		}
+	}
 	if a.Approve != nil {
 		ok, err := a.Approve(ctx, t, c, label)
 		switch {
@@ -300,6 +308,9 @@ func (a *Agent) run(ctx context.Context, t tool.Tool, c llm.ToolCall, label stri
 		case !ok:
 			return tool.Result{}, errors.New(Declined)
 		}
+	}
+	if bindErr != nil {
+		return tool.Result{}, bindErr
 	}
 	return t.Run(ctx, args)
 }
